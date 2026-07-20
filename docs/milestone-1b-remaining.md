@@ -52,6 +52,12 @@ Mon–Sun. Each day: meal text input + 3-way choice (see data-model flag
 above). See `docs/wireframes` conversation history / ask Ivan for the
 reference wireframe if needed.
 
+Each collapsed day row needs a completion indicator (e.g. a checkmark or
+filled/empty visual state) so the user can tell at a glance which days are
+done without opening every accordion item — accordion trades away the
+"see the whole week at once" view a table would give, this indicator is
+what makes up for that trade-off. Don't ship the accordion without it.
+
 ## 3. Weekly Success Tracker screen
 Matches `WeeklyTrackerEntry` type (`habits: HabitDayStatus[]`, each
 `{ name, days: boolean[7] }`, plus `sunday_reset_done`).
@@ -69,6 +75,14 @@ keystroke). Build with local component state for now — actual persistence
 call is Milestone 1a's job once the Edge Functions exist. Reuse across
 Base Plan, Evening Meals, and Tracker forms — make it one shared component,
 not copy-pasted three times.
+
+## Known items to revisit (not blocking)
+- Navigation currently uses plain `<a href>` everywhere (NavShell, dashboard
+  cards) instead of Next.js `<Link>`, causing a full page reload on every
+  internal nav click instead of client-side transitions. Worth fixing in
+  one pass across NavShell + all cards together once more routes exist —
+  don't fix piecemeal in a single component, it'll just create the
+  inconsistency the other way.
 
 ## 5. Mobile responsive pass + e2e QA
 Check every screen at mobile width first (this is a mobile-first product —
