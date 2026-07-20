@@ -13,40 +13,6 @@
 -- Future migrations: keep RLS enabled, use the same helper functions, add explicit GRANTs.
 
 -- ---------------------------------------------------------------------------
--- Helper functions (SECURITY DEFINER — bypass RLS when reading profiles.role)
--- ---------------------------------------------------------------------------
-
-create or replace function public.is_coach_or_admin(uid uuid)
-returns boolean
-language sql
-security definer
-set search_path = public
-stable
-as $$
-  select exists (
-    select 1
-    from public.profiles
-    where id = uid
-      and role in ('coach', 'admin')
-  );
-$$;
-
-create or replace function public.is_admin(uid uuid)
-returns boolean
-language sql
-security definer
-set search_path = public
-stable
-as $$
-  select exists (
-    select 1
-    from public.profiles
-    where id = uid
-      and role = 'admin'
-  );
-$$;
-
--- ---------------------------------------------------------------------------
 -- Tables
 -- ---------------------------------------------------------------------------
 
@@ -92,6 +58,40 @@ create table public.weight_measurements (
   chest numeric not null,
   primary key (user_id, week_start)
 );
+
+-- ---------------------------------------------------------------------------
+-- Helper functions (SECURITY DEFINER — bypass RLS when reading profiles.role)
+-- ---------------------------------------------------------------------------
+
+create or replace function public.is_coach_or_admin(uid uuid)
+returns boolean
+language sql
+security definer
+set search_path = public
+stable
+as $$
+  select exists (
+    select 1
+    from public.profiles
+    where id = uid
+      and role in ('coach', 'admin')
+  );
+$$;
+
+create or replace function public.is_admin(uid uuid)
+returns boolean
+language sql
+security definer
+set search_path = public
+stable
+as $$
+  select exists (
+    select 1
+    from public.profiles
+    where id = uid
+      and role = 'admin'
+  );
+$$;
 
 -- ---------------------------------------------------------------------------
 -- Triggers (profiles privilege escalation guard)

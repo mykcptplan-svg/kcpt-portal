@@ -1,19 +1,37 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { createClient } from "@/lib/supabase/client";
 
 export default function LoginPage() {
+  const router = useRouter();
+  const supabase = createClient();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    setError(null);
     setSubmitting(true);
-    // TODO(Milestone 1a): call the auth Edge Function via lib/api, e.g.
-    // await login({ email, password }) — see lib/api/tracker.ts for the
-    // fetch + Authorization: Bearer <token> pattern this should follow.
-    setTimeout(() => setSubmitting(false), 600);
+
+    try {
+      const { error: signInError } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
+      if (signInError) {
+        setError(signInError.message || "Could not log in.");
+        return;
+      }
+      router.push("/");
+    } catch {
+      setError("Something went wrong. Please try again.");
+    } finally {
+      setSubmitting(false);
+    }
   }
 
   return (
@@ -57,6 +75,10 @@ export default function LoginPage() {
             className="h-11 rounded-md border border-border bg-transparent px-3 text-sm text-foreground placeholder:text-muted focus:border-brand-orange focus:outline-none"
           />
         </div>
+
+        {error && (
+          <p className="text-xs text-brand-orange-dark">{error}</p>
+        )}
 
         <button
           type="submit"
