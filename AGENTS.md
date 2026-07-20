@@ -9,13 +9,14 @@ Keep this file up to date as decisions evolve. Any AI agent (Cursor, Claude, or 
 - The frontend NEVER calls the Supabase database directly (no direct supabase-js table queries from client or server components). All reads and writes go through Supabase Edge Function endpoints, called via `fetch` from `lib/api/`.
 - Edge Functions authenticate using a standard `Authorization: Bearer <token>` header, never cookies, so the exact same endpoints can be reused by a future native mobile app without modification.
 - Row Level Security (RLS) stays enabled on all tables as a defense-in-depth layer, even though Edge Functions are the only entry point. Edge Functions should use the calling user's own auth context (their JWT) when querying Postgres, not the `service_role` key, so RLS policies still apply.
-- The `service_role` key is not used anywhere in this project for now. If a future need arises, it must be flagged and discussed before use, never added casually.
+- The `service_role` key is not used anywhere in this project, with one deliberate, documented exception: the invite-only registration Edge Function calls `supabase.auth.admin.inviteUserByEmail()`, which requires `service_role`. This is the only place the key is used. It must live only in that Edge Function's server-side environment (Supabase, never Vercel) and must never be exposed to the frontend. No other Edge Function or code path should use `service_role`; everything else uses the caller's own JWT so RLS still applies. Any further use beyond this one exception must be flagged and discussed before being added.
 
 ## Data model
 
 - Tables: `profiles`, `weekly_base_plans`, `weekly_tracker_entries`, `weight_measurements`.
 - RLS policy pattern: members can only select/insert/update rows where `user_id = auth.uid()`. The coach/admin role (in `profiles.role`) can read all rows across all tables (read-only) for the Coach Review feature. Only `profiles.status` is writable by the admin role, never member content tables directly.
 - `WeeklyTrackerEntry.habits` shape: `{ name: string; days: boolean[] }[]` (`days` = 7 flags, Mon–Sun).
+- `WeeklyBasePlan.evening_meals` shape: `{ day: string; meal: string; approach: "meal_bank" | "orange_base" | "own" }[]` (one entry per day of the week).
 
 ## Notes for PDF export (Milestone 3, not yet built)
 

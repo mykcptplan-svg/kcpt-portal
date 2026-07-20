@@ -5,6 +5,13 @@ export type Profile = {
   status: "active" | "revoked";
 };
 
+/** One evening meal entry for a single day of the week */
+export type EveningMealEntry = {
+  day: string;
+  meal: string;
+  approach: "meal_bank" | "orange_base" | "own";
+};
+
 export type WeeklyBasePlan = {
   user_id: string;
   week_start: string;
@@ -13,7 +20,7 @@ export type WeeklyBasePlan = {
   lunches: string[];
   trigger_snacks: string[];
   desserts: string[];
-  evening_meals: string[];
+  evening_meals: EveningMealEntry[];
 };
 
 /** One habit; `days` is length 7: Mon…Sun completion flags */
