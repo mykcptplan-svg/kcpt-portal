@@ -3,11 +3,13 @@
  *
  * Returns the authenticated caller's own profile display fields.
  *
- * Uses the caller's JWT only (no service_role). RLS policies still apply.
- * Identity is always derived server-side from the authenticated token —
- * never from the request body or query params.
+ * Uses the caller's JWT only (no service_role). Identity is always
+ * derived server-side from the authenticated token — never from the
+ * request body or query params.
  *
- * full_name comes from public.profiles; email and created_at come from
+ * full_name and status come from public.get_own_profile_summary (SECURITY
+ * DEFINER, self-only) so revoked members can still read their own status
+ * after own-row RLS requires is_active(). email and created_at come from
  * the auth user (profiles has no created_at column).
  */
 
@@ -72,21 +74,23 @@ Deno.serve(async (req: Request) => {
     return jsonResponse({ error: "Unauthorized" }, 401);
   }
 
-  const { data: profile, error: selectError } = await callerClient
-    .from("profiles")
-    .select("full_name")
-    .eq("id", user.id)
-    .maybeSingle();
+  const { data: rows, error: selectError } = await callerClient.rpc(
+    "get_own_profile_summary",
+    { uid: user.id },
+  );
 
   if (selectError) {
-    console.error("get-profile: profile select failed", selectError);
+    console.error("get-profile: profile summary failed", selectError);
     return jsonResponse({ error: "Unable to load profile" }, 500);
   }
+
+  const profile = Array.isArray(rows) ? rows[0] : rows;
 
   return jsonResponse(
     {
       data: {
         full_name: profile?.full_name ?? "",
+        status: profile?.status ?? "",
         email: user.email ?? null,
         created_at: user.created_at ?? null,
       },

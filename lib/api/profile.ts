@@ -20,6 +20,7 @@
 
 export type CallerProfile = {
   full_name: string;
+  status: string;
   email: string | null;
   created_at: string | null;
 };

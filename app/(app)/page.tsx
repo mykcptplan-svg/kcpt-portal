@@ -22,6 +22,7 @@ export default function Home() {
   const weekRange = useMemo(() => formatWeekRange(weekStart), [weekStart]);
 
   const [firstName, setFirstName] = useState("there");
+  const [isRevoked, setIsRevoked] = useState(false);
   const [basePlanFilled, setBasePlanFilled] = useState(false);
   const [trackerDaysLogged, setTrackerDaysLogged] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -41,15 +42,23 @@ export default function Home() {
       const fallbackName =
         emailPrefix(session.user.email) ?? "there";
 
-      const [profile, plan, tracker] = await Promise.all([
-        getProfile(session.access_token).catch(() => null),
-        getWeeklyBasePlan(weekStart, session.access_token).catch(() => null),
-        getWeeklyTracker(weekStart, session.access_token).catch(() => null),
-      ]);
+      const profile = await getProfile(session.access_token).catch(() => null);
       if (cancelled) return;
 
       const fullName = profile?.full_name?.trim();
       setFirstName(fullName || fallbackName);
+
+      if (profile?.status === "revoked") {
+        setIsRevoked(true);
+        setLoading(false);
+        return;
+      }
+
+      const [plan, tracker] = await Promise.all([
+        getWeeklyBasePlan(weekStart, session.access_token).catch(() => null),
+        getWeeklyTracker(weekStart, session.access_token).catch(() => null),
+      ]);
+      if (cancelled) return;
 
       if (plan) {
         setBasePlanFilled(
@@ -95,45 +104,62 @@ export default function Home() {
         </h1>
       </div>
 
-      <WeekOverviewCard
-        weekRange={weekRange}
-        basePlanFilled={basePlanFilled}
-        trackerDaysLogged={trackerDaysLogged}
-        trackerDaysTotal={7}
-      />
+      {isRevoked ? (
+        <div
+          className="rounded-lg border px-4 py-3 text-[14px] leading-snug"
+          style={{
+            background: "var(--tip-bg)",
+            borderColor: "var(--brand-orange-dark)",
+            color: "var(--brand-orange-dark)",
+          }}
+          role="status"
+        >
+          Your access has been paused. Please contact your coach for more
+          information.
+        </div>
+      ) : (
+        <>
+          <WeekOverviewCard
+            weekRange={weekRange}
+            basePlanFilled={basePlanFilled}
+            trackerDaysLogged={trackerDaysLogged}
+            trackerDaysTotal={7}
+          />
 
-      <div className="mt-2">
-        <h2 className="font-heading text-lg uppercase tracking-wide text-foreground">
-          Quick Access
-        </h2>
-      </div>
+          <div className="mt-2">
+            <h2 className="font-heading text-lg uppercase tracking-wide text-foreground">
+              Quick Access
+            </h2>
+          </div>
 
-      <div className="grid gap-3 sm:grid-cols-2">
-        <QuickAccessCard
-          title="My Food Plan"
-          description="Your structure for this week"
-          icon={<PlanIcon className="h-5 w-5" />}
-          href="/plan"
-        />
-        <QuickAccessCard
-          title="My Success Tracker"
-          description="Log and review your days"
-          icon={<TrackerIcon className="h-5 w-5" />}
-          href="/tracker"
-        />
-        <QuickAccessCard
-          title="History"
-          description="Past weeks at a glance"
-          icon={<HistoryIcon className="h-5 w-5" />}
-          comingSoon
-        />
-        <QuickAccessCard
-          title="Measurements"
-          description="Track your progress over time"
-          icon={<RulerIcon className="h-5 w-5" />}
-          comingSoon
-        />
-      </div>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <QuickAccessCard
+              title="My Food Plan"
+              description="Your structure for this week"
+              icon={<PlanIcon className="h-5 w-5" />}
+              href="/plan"
+            />
+            <QuickAccessCard
+              title="My Success Tracker"
+              description="Log and review your days"
+              icon={<TrackerIcon className="h-5 w-5" />}
+              href="/tracker"
+            />
+            <QuickAccessCard
+              title="History"
+              description="Past weeks at a glance"
+              icon={<HistoryIcon className="h-5 w-5" />}
+              comingSoon
+            />
+            <QuickAccessCard
+              title="Measurements"
+              description="Track your progress over time"
+              icon={<RulerIcon className="h-5 w-5" />}
+              comingSoon
+            />
+          </div>
+        </>
+      )}
     </div>
   );
 }
