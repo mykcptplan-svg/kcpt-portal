@@ -126,16 +126,7 @@ export default function PlanPage() {
         </p>
       </div>
 
-      <div className="flex items-center justify-between gap-3">
-        <AutosaveStatus status={status} />
-        <Link
-          href="/evening-meals"
-          className="flex items-center gap-1 text-xs font-bold text-brand-orange-dark"
-        >
-          Evening Meals
-          <ArrowRightIcon className="h-3.5 w-3.5" />
-        </Link>
-      </div>
+      <AutosaveStatus status={status} />
 
       <div className="grid gap-4 sm:grid-cols-2">
         <MealSectionCard
@@ -186,6 +177,14 @@ export default function PlanPage() {
       {(loadError || saveError) && (
         <p className="text-xs text-brand-orange-dark">{loadError ?? saveError}</p>
       )}
+
+      <Link
+        href="/evening-meals"
+        className="flex items-center gap-1 text-xs font-bold text-brand-orange-dark"
+      >
+        Evening Meals
+        <ArrowRightIcon className="h-3.5 w-3.5" />
+      </Link>
 
       <div className="flex gap-3.5 rounded-[18px] border border-tip-border bg-tip-bg p-[18px]">
         <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-brand-gradient text-white">

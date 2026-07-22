@@ -19,12 +19,12 @@ const navItems = [
     icon: <HomeIcon className="h-5 w-5" />,
   },
   {
-    label: "Food Plan",
+    label: "My Food Plan",
     href: "/plan",
     icon: <PlanIcon className="h-5 w-5" />,
   },
   {
-    label: "Tracker",
+    label: "My Success Tracker",
     href: "/tracker",
     icon: <TrackerIcon className="h-5 w-5" />,
   },
@@ -109,12 +109,14 @@ export default function NavShell({ children }: { children: ReactNode }) {
               <Link
                 key={item.label}
                 href={item.href}
-                className={`flex flex-1 flex-col items-center gap-1 rounded-[14px] py-2 text-[10.5px] font-semibold transition-colors ${
+                className={`flex flex-1 flex-col items-center gap-1 rounded-[14px] py-2 px-0.5 transition-colors ${
                   active ? "text-brand-orange-dark" : "text-muted/70 hover:text-brand-orange-dark"
                 }`}
               >
                 {item.icon}
-                {item.label}
+                <span className="text-center text-[9.5px] font-semibold leading-tight whitespace-normal">
+                  {item.label}
+                </span>
               </Link>
             );
           })}

@@ -15,21 +15,16 @@ import { createClient } from "@/lib/supabase/client";
 import { getWeekStart } from "@/lib/week";
 
 const DAY_LABELS = ["M", "T", "W", "T", "F", "S", "S"];
-const NON_NEGOTIABLES = [
-  "Drink 100oz water daily",
-  "10k steps",
-  "No trigger snacks after 8pm",
-  "Log all meals",
-];
 
 function emptyChecks(): boolean[][] {
-  return NON_NEGOTIABLES.map(() => Array(7).fill(false));
+  return Array.from({ length: 3 }, () => Array(7).fill(false) as boolean[]);
 }
 
 export default function TrackerPage() {
   const supabase = useMemo(() => createClient(), []);
   const weekStart = useMemo(() => getWeekStart(), []);
 
+  const [habitNames, setHabitNames] = useState<string[]>(["", "", ""]);
   const [checks, setChecks] = useState<boolean[][]>(emptyChecks);
   const [wentWell, setWentWell] = useState("");
   const [adjustNext, setAdjustNext] = useState("");
@@ -54,9 +49,12 @@ export default function TrackerPage() {
         const tracker = await getWeeklyTracker(weekStart, session.access_token);
         if (cancelled || !tracker) return;
 
-        const byName = new Map(tracker.habits.map((h) => [h.name, h.days]));
+        const habits = tracker.habits.slice(0, 3);
+        setHabitNames([0, 1, 2].map((i) => habits[i]?.name ?? ""));
         setChecks(
-          NON_NEGOTIABLES.map((name) => byName.get(name)?.slice() ?? Array(7).fill(false)),
+          [0, 1, 2].map(
+            (i) => habits[i]?.days?.slice() ?? (Array(7).fill(false) as boolean[]),
+          ),
         );
         if (tracker.sunday_reset_done) {
           // Text isn't persisted (no backing column) — the boolean flag is
@@ -87,8 +85,8 @@ export default function TrackerPage() {
   }
 
   const draft = useMemo(
-    () => ({ checks, wentWell, adjustNext }),
-    [checks, wentWell, adjustNext],
+    () => ({ checks, habitNames, wentWell, adjustNext }),
+    [checks, habitNames, wentWell, adjustNext],
   );
 
   const { status, error: saveError } = useDebouncedSave(
@@ -99,7 +97,10 @@ export default function TrackerPage() {
       await saveWeeklyTracker(
         {
           week_start: weekStart,
-          habits: NON_NEGOTIABLES.map((name, i) => ({ name, days: value.checks[i] })),
+          habits: value.habitNames.map((name, i) => ({
+            name,
+            days: value.checks[i],
+          })),
           sunday_reset_done: Boolean(value.wentWell.trim() || value.adjustNext.trim()),
         },
         accessToken,
@@ -136,18 +137,24 @@ export default function TrackerPage() {
             <CheckIcon className="h-3.5 w-3.5" />
           </span>
           <h2 className="font-heading text-base uppercase tracking-wide text-foreground">
-            Non-Negotiables
+            My Non-Negotiables
           </h2>
         </div>
-        <p className="mb-2.5 text-[11px] font-bold uppercase tracking-wide text-muted">
-          Your Non-Negotiables
-        </p>
         <div className="flex flex-col gap-2.5">
-          {NON_NEGOTIABLES.map((item) => (
-            <div key={item} className="flex items-center gap-2.5">
-              <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-brand-orange-dark" />
-              <span className="text-[13.5px] font-semibold text-foreground">{item}</span>
-            </div>
+          {habitNames.map((name, i) => (
+            <input
+              key={i}
+              type="text"
+              value={name}
+              onChange={(e) => {
+                const next = habitNames.slice();
+                next[i] = e.target.value;
+                setHabitNames(next);
+              }}
+              placeholder={`Non-negotiable ${i + 1}`}
+              maxLength={40}
+              className="w-full rounded-[10px] border border-border bg-background px-3 py-2 text-[13.5px] text-foreground outline-none focus:border-brand-orange"
+            />
           ))}
         </div>
       </section>
@@ -174,31 +181,36 @@ export default function TrackerPage() {
             </div>
           ))}
 
-          {NON_NEGOTIABLES.map((label, rowIdx) => (
-            <Fragment key={label}>
-              <div className="pr-1.5 text-xs font-bold leading-tight text-foreground">
-                {label}
-              </div>
-              {checks[rowIdx].map((checked, colIdx) => (
-                <div
-                  key={`${label}-${colIdx}`}
-                  className="flex justify-center py-0.5"
-                >
-                  <button
-                    type="button"
-                    onClick={() => toggleCell(rowIdx, colIdx)}
-                    aria-pressed={checked}
-                    aria-label={`${label} — ${DAY_LABELS[colIdx]}`}
-                    className={`flex h-[26px] w-[26px] cursor-pointer items-center justify-center rounded-lg transition-colors ${
-                      checked ? "bg-brand-gradient" : "border border-border bg-background"
-                    }`}
-                  >
-                    {checked && <CheckIcon className="h-2.5 w-2.5 text-white" />}
-                  </button>
+          {habitNames.map((label, rowIdx) => {
+            const displayLabel = label.trim() || "Not set yet";
+            return (
+              <Fragment key={rowIdx}>
+                <div className="line-clamp-2 overflow-hidden pr-1.5 text-xs font-bold leading-tight text-foreground">
+                  {label.trim() || (
+                    <span className="italic text-muted">Not set yet</span>
+                  )}
                 </div>
-              ))}
-            </Fragment>
-          ))}
+                {checks[rowIdx].map((checked, colIdx) => (
+                  <div
+                    key={`${rowIdx}-${colIdx}`}
+                    className="flex justify-center py-0.5"
+                  >
+                    <button
+                      type="button"
+                      onClick={() => toggleCell(rowIdx, colIdx)}
+                      aria-pressed={checked}
+                      aria-label={`${displayLabel} — ${DAY_LABELS[colIdx]}`}
+                      className={`flex h-[26px] w-[26px] cursor-pointer items-center justify-center rounded-lg transition-colors ${
+                        checked ? "bg-brand-gradient" : "border border-border bg-background"
+                      }`}
+                    >
+                      {checked && <CheckIcon className="h-2.5 w-2.5 text-white" />}
+                    </button>
+                  </div>
+                ))}
+              </Fragment>
+            );
+          })}
         </div>
       </section>
 
