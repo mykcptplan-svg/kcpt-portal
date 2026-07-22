@@ -37,3 +37,16 @@ export function getWeekStart(date: Date = new Date()): string {
 
   return formatWeekStart(result);
 }
+
+/**
+ * Format a "YYYY-MM-DD" week_start (a Monday) as a display range through
+ * that week's Sunday, e.g. "Jul 20 – Jul 26".
+ */
+export function formatWeekRange(weekStart: string): string {
+  const [year, month, day] = weekStart.split("-").map(Number);
+  const monday = new Date(year, month - 1, day);
+  const sunday = new Date(year, month - 1, day + 6);
+  const fmt = (d: Date) =>
+    d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  return `${fmt(monday)} – ${fmt(sunday)}`;
+}

@@ -1,0 +1,265 @@
+"use client";
+
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
+import AutosaveStatus from "@/components/AutosaveStatus";
+import HeartLoader from "@/components/HeartLoader";
+import {
+  ArrowRightIcon,
+  CheckIcon,
+  ClipboardCheckIcon,
+  RefreshIcon,
+} from "@/components/icons";
+import { getWeeklyTracker, saveWeeklyTracker } from "@/lib/api/tracker";
+import { useDebouncedSave } from "@/lib/hooks/useDebouncedSave";
+import { createClient } from "@/lib/supabase/client";
+import { getWeekStart } from "@/lib/week";
+
+const DAY_LABELS = ["M", "T", "W", "T", "F", "S", "S"];
+const NON_NEGOTIABLES = [
+  "Drink 100oz water daily",
+  "10k steps",
+  "No trigger snacks after 8pm",
+  "Log all meals",
+];
+
+function emptyChecks(): boolean[][] {
+  return NON_NEGOTIABLES.map(() => Array(7).fill(false));
+}
+
+export default function TrackerPage() {
+  const supabase = useMemo(() => createClient(), []);
+  const weekStart = useMemo(() => getWeekStart(), []);
+
+  const [checks, setChecks] = useState<boolean[][]>(emptyChecks);
+  const [wentWell, setWentWell] = useState("");
+  const [adjustNext, setAdjustNext] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const accessTokenRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function load() {
+      try {
+        const {
+          data: { session },
+        } = await supabase.auth.getSession();
+        if (!session) {
+          if (!cancelled) setLoadError("Not logged in.");
+          return;
+        }
+        accessTokenRef.current = session.access_token;
+
+        const tracker = await getWeeklyTracker(weekStart, session.access_token);
+        if (cancelled || !tracker) return;
+
+        const byName = new Map(tracker.habits.map((h) => [h.name, h.days]));
+        setChecks(
+          NON_NEGOTIABLES.map((name) => byName.get(name)?.slice() ?? Array(7).fill(false)),
+        );
+        if (tracker.sunday_reset_done) {
+          // Text isn't persisted (no backing column) — the boolean flag is
+          // the only signal we get back, so surface it as a placeholder.
+          setWentWell((current) => current || "Reset completed for this week.");
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setLoadError(err instanceof Error ? err.message : "Unable to load tracker.");
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
+
+    void load();
+    return () => {
+      cancelled = true;
+    };
+  }, [supabase, weekStart]);
+
+  function toggleCell(rowIdx: number, colIdx: number) {
+    setChecks((prev) => {
+      const next = prev.map((row) => row.slice());
+      next[rowIdx][colIdx] = !next[rowIdx][colIdx];
+      return next;
+    });
+  }
+
+  const draft = useMemo(
+    () => ({ checks, wentWell, adjustNext }),
+    [checks, wentWell, adjustNext],
+  );
+
+  const { status, error: saveError } = useDebouncedSave(
+    draft,
+    async (value) => {
+      const accessToken = accessTokenRef.current;
+      if (!accessToken) throw new Error("Not logged in.");
+      await saveWeeklyTracker(
+        {
+          week_start: weekStart,
+          habits: NON_NEGOTIABLES.map((name, i) => ({ name, days: value.checks[i] })),
+          sunday_reset_done: Boolean(value.wentWell.trim() || value.adjustNext.trim()),
+        },
+        accessToken,
+      );
+    },
+    { skip: loading },
+  );
+
+  if (loading) {
+    return (
+      <div className="flex flex-1 items-center justify-center px-6 py-10">
+        <HeartLoader size={192} />
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-1 flex-col gap-4 px-5 py-6 md:mx-auto md:w-full md:max-w-3xl md:px-10 md:py-10">
+      <div>
+        <h1 className="font-heading text-[32px] uppercase leading-none tracking-wide text-foreground">
+          My Success Tracker
+        </h1>
+        <p className="mt-0.5 font-script text-xl font-bold text-brand-orange-dark">
+          Small wins. Big results.
+        </p>
+      </div>
+
+      <AutosaveStatus status={status} />
+
+      {/* Non-negotiables */}
+      <section className="rounded-[20px] border border-border bg-card p-5 shadow-[0_12px_26px_-18px_rgba(17,17,17,0.16)]">
+        <div className="mb-3.5 flex items-center gap-3">
+          <span className="flex h-[38px] w-[38px] shrink-0 items-center justify-center rounded-full bg-brand-gradient text-white">
+            <CheckIcon className="h-3.5 w-3.5" />
+          </span>
+          <h2 className="font-heading text-base uppercase tracking-wide text-foreground">
+            Non-Negotiables
+          </h2>
+        </div>
+        <p className="mb-2.5 text-[11px] font-bold uppercase tracking-wide text-muted">
+          Your Non-Negotiables
+        </p>
+        <div className="flex flex-col gap-2.5">
+          {NON_NEGOTIABLES.map((item) => (
+            <div key={item} className="flex items-center gap-2.5">
+              <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-brand-orange-dark" />
+              <span className="text-[13.5px] font-semibold text-foreground">{item}</span>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* Check-in grid */}
+      <section className="rounded-[20px] border border-border bg-card px-4 py-5 shadow-[0_12px_26px_-18px_rgba(17,17,17,0.16)]">
+        <div className="mb-4 flex items-center gap-3 px-1">
+          <span className="flex h-[38px] w-[38px] shrink-0 items-center justify-center rounded-full bg-brand-gradient text-white">
+            <ClipboardCheckIcon className="h-4 w-4" />
+          </span>
+          <h2 className="font-heading text-base uppercase tracking-wide text-foreground">
+            This Week&apos;s Check-In
+          </h2>
+        </div>
+
+        <div className="grid grid-cols-[minmax(88px,1.3fr)_repeat(7,minmax(0,1fr))] items-center gap-x-0.5 gap-y-1">
+          <div />
+          {DAY_LABELS.map((d, i) => (
+            <div
+              key={`${d}-${i}`}
+              className="text-center text-[10.5px] font-extrabold tracking-wide text-muted"
+            >
+              {d}
+            </div>
+          ))}
+
+          {NON_NEGOTIABLES.map((label, rowIdx) => (
+            <Fragment key={label}>
+              <div className="pr-1.5 text-xs font-bold leading-tight text-foreground">
+                {label}
+              </div>
+              {checks[rowIdx].map((checked, colIdx) => (
+                <div
+                  key={`${label}-${colIdx}`}
+                  className="flex justify-center py-0.5"
+                >
+                  <button
+                    type="button"
+                    onClick={() => toggleCell(rowIdx, colIdx)}
+                    aria-pressed={checked}
+                    aria-label={`${label} — ${DAY_LABELS[colIdx]}`}
+                    className={`flex h-[26px] w-[26px] cursor-pointer items-center justify-center rounded-lg transition-colors ${
+                      checked ? "bg-brand-gradient" : "border border-border bg-background"
+                    }`}
+                  >
+                    {checked && <CheckIcon className="h-2.5 w-2.5 text-white" />}
+                  </button>
+                </div>
+              ))}
+            </Fragment>
+          ))}
+        </div>
+      </section>
+
+      {/* Sunday reset */}
+      <section className="rounded-[20px] border border-border bg-card p-5 shadow-[0_12px_26px_-18px_rgba(17,17,17,0.16)]">
+        <div className="mb-4 flex items-center gap-3">
+          <span className="flex h-[38px] w-[38px] shrink-0 items-center justify-center rounded-full bg-brand-gradient text-white">
+            <RefreshIcon className="h-4 w-4" />
+          </span>
+          <h2 className="font-heading text-base uppercase tracking-wide text-foreground">
+            Sunday Reset
+          </h2>
+        </div>
+
+        <p className="mb-2 text-[11px] font-bold uppercase tracking-wide text-muted">
+          What went well this week?
+        </p>
+        <textarea
+          value={wentWell}
+          onChange={(e) => setWentWell(e.target.value)}
+          placeholder="e.g. Hit my water goal every day"
+          rows={2}
+          className="w-full resize-none rounded-[10px] border border-border bg-background px-[13px] py-3 text-[13.5px] text-foreground outline-none focus:border-brand-orange"
+        />
+
+        <p className="mb-2 mt-4 text-[11px] font-bold uppercase tracking-wide text-muted">
+          What will you adjust next week?
+        </p>
+        <textarea
+          value={adjustNext}
+          onChange={(e) => setAdjustNext(e.target.value)}
+          placeholder="e.g. Prep lunches on Sunday"
+          rows={2}
+          className="w-full resize-none rounded-[10px] border border-border bg-background px-[13px] py-3 text-[13.5px] text-foreground outline-none focus:border-brand-orange"
+        />
+      </section>
+
+      {(loadError || saveError) && (
+        <p className="text-xs text-brand-orange-dark">{loadError ?? saveError}</p>
+      )}
+
+      <div className="flex items-center gap-3.5 rounded-[18px] border border-tip-border bg-gradient-to-r from-[rgba(247,162,53,0.08)] to-[rgba(236,74,49,0.05)] p-4">
+        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-brand-gradient text-white">
+          <RefreshIcon className="h-4 w-4" />
+        </span>
+        <div className="flex-1">
+          <p className="text-sm font-bold text-foreground">Sunday Reset</p>
+          <p className="mt-0.5 text-[12.5px] text-muted">
+            Continue your full reset in the coaching app
+          </p>
+        </div>
+        <span className="flex items-center gap-1 whitespace-nowrap text-xs font-bold text-brand-orange-dark">
+          Open <ArrowRightIcon className="h-3.5 w-3.5" />
+        </span>
+      </div>
+
+      <div className="rounded-2xl bg-brand-gradient px-[18px] py-[14px] text-center">
+        <span className="font-heading text-[15px] uppercase tracking-wide text-white">
+          Consistency Beats Perfection
+        </span>
+      </div>
+    </div>
+  );
+}

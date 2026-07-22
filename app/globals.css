@@ -1,19 +1,29 @@
 @import "tailwindcss";
 
 /*
-  KCPT brand palette — extracted from Kelly's logo files (public/brand/),
-  sampled programmatically, not eyeballed. See KCPT Portal Notion page for
-  the reasoning log.
+  KCPT brand palette — matches the "KCPT Portal Dashboard" Claude Design
+  project (light cream + orange gradient system). See AGENTS.md.
 */
 :root {
-  --background: #000000;
-  --foreground: #fafafa;
-  --muted: #a1a1a1;
-  --border: #262626;
+  --background: #faf8f5;
+  --foreground: #1a1613;
+  --muted: rgba(26, 22, 19, 0.55);
+  --border: rgba(17, 17, 17, 0.08);
+
+  --card: #ffffff;
+  --card-border: rgba(17, 17, 17, 0.08);
 
   --brand-orange: #fb933a;
   --brand-orange-light: #f7a235;
   --brand-orange-dark: #ec4a31;
+  --brand-gradient: linear-gradient(120deg, #f7a235, #ec4a31);
+
+  --tip-bg: #fdf1de;
+  --tip-border: rgba(251, 147, 58, 0.28);
+  --tip-text: #b8681d;
+
+  --badge-bg: #fdf1de;
+  --badge-text: #b8681d;
 }
 
 @theme inline {
@@ -22,16 +32,36 @@
   --color-muted: var(--muted);
   --color-border: var(--border);
 
+  --color-card: var(--card);
+  --color-card-border: var(--card-border);
+
   --color-brand-orange: var(--brand-orange);
   --color-brand-orange-light: var(--brand-orange-light);
   --color-brand-orange-dark: var(--brand-orange-dark);
 
+  --color-tip-bg: var(--tip-bg);
+  --color-tip-border: var(--tip-border);
+  --color-tip-text: var(--tip-text);
+
+  --color-badge-bg: var(--badge-bg);
+  --color-badge-text: var(--badge-text);
+
   --font-sans: var(--font-inter);
   --font-heading: var(--font-anton);
+  --font-script: var(--font-caveat);
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
   font-family: var(--font-sans), Arial, Helvetica, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+input::placeholder {
+  color: rgba(26, 22, 19, 0.35);
+}
+
+.bg-brand-gradient {
+  background-image: var(--brand-gradient);
 }
