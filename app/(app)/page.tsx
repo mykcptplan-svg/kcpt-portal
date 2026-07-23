@@ -149,13 +149,13 @@ export default function Home() {
               title="History"
               description="Past weeks at a glance"
               icon={<HistoryIcon className="h-5 w-5" />}
-              comingSoon
+              href="/history"
             />
             <QuickAccessCard
               title="Measurements"
               description="Track your progress over time"
               icon={<RulerIcon className="h-5 w-5" />}
-              comingSoon
+              href="/measurements"
             />
           </div>
         </>

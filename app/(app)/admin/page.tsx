@@ -1,0 +1,228 @@
+"use client";
+
+import { useState } from "react";
+import { UsersIcon } from "@/components/icons";
+
+type Member = {
+  firstName: string;
+  lastName: string;
+  email: string;
+  active: boolean;
+  coachReview: boolean;
+};
+
+const INITIAL_MEMBERS: Member[] = [
+  { firstName: "Jamie", lastName: "Morgan", email: "jamie.morgan@email.com", active: true, coachReview: true },
+  { firstName: "Alex", lastName: "Rivera", email: "alex.rivera@email.com", active: true, coachReview: false },
+  { firstName: "Sam", lastName: "Whitfield", email: "sam.whitfield@email.com", active: true, coachReview: true },
+  { firstName: "Priya", lastName: "Nair", email: "priya.nair@email.com", active: false, coachReview: false },
+  { firstName: "Devon", lastName: "Clarke", email: "devon.clarke@email.com", active: true, coachReview: false },
+  { firstName: "Rina", lastName: "Damayanti", email: "rina.damayanti@email.com", active: true, coachReview: true },
+  { firstName: "Theo", lastName: "Baxter", email: "theo.baxter@email.com", active: false, coachReview: false },
+];
+
+function initials(m: Pick<Member, "firstName" | "lastName">): string {
+  return `${m.firstName[0] ?? ""}${m.lastName[0] ?? ""}`.toUpperCase();
+}
+
+export default function AdminPage() {
+  const [members, setMembers] = useState<Member[]>(INITIAL_MEMBERS);
+  const [showInviteForm, setShowInviteForm] = useState(false);
+  const [inviteForm, setInviteForm] = useState({ firstName: "", lastName: "", email: "" });
+
+  function toggleMember(i: number, key: "active" | "coachReview") {
+    setMembers((prev) =>
+      prev.map((m, idx) => (idx === i ? { ...m, [key]: !m[key] } : m)),
+    );
+  }
+
+  function handleSendInvite() {
+    const { firstName, lastName, email } = inviteForm;
+    if (!firstName || !lastName || !email) return;
+    setMembers((prev) => [...prev, { firstName, lastName, email, active: true, coachReview: false }]);
+    setInviteForm({ firstName: "", lastName: "", email: "" });
+    setShowInviteForm(false);
+  }
+
+  return (
+    <div className="flex flex-1 flex-col gap-4 px-5 py-6 md:mx-auto md:w-full md:max-w-[960px] md:px-10 md:py-10">
+      <div className="flex flex-wrap items-end justify-between gap-4">
+        <div>
+          <h1 className="font-heading text-[32px] uppercase leading-none tracking-wide text-foreground">
+            Admin Panel
+          </h1>
+          <p className="mt-0.5 font-script text-xl font-bold text-brand-orange-dark">
+            Manage your members.
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={() => setShowInviteForm((v) => !v)}
+          className="cursor-pointer whitespace-nowrap rounded-[14px] bg-brand-gradient px-5 py-3 transition-transform hover:-translate-y-0.5"
+        >
+          <span className="font-heading text-[13px] uppercase tracking-wide text-white">
+            {showInviteForm ? "× Close" : "+ Invite Member"}
+          </span>
+        </button>
+      </div>
+
+      {showInviteForm && (
+        <section className="rounded-[20px] border border-border bg-card p-5 shadow-[0_12px_26px_-18px_rgba(17,17,17,0.16)]">
+          <h2 className="mb-4 font-heading text-base uppercase tracking-wide text-foreground">
+            Invite New Member
+          </h2>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <p className="mb-2 text-[11px] font-bold uppercase tracking-wide text-muted">
+                First Name
+              </p>
+              <input
+                type="text"
+                value={inviteForm.firstName}
+                onChange={(e) => setInviteForm((f) => ({ ...f, firstName: e.target.value }))}
+                placeholder="e.g. Jamie"
+                className="w-full rounded-[10px] border border-border bg-background px-[13px] py-3 text-[14px] font-semibold text-foreground outline-none focus:border-brand-orange"
+              />
+            </div>
+            <div>
+              <p className="mb-2 text-[11px] font-bold uppercase tracking-wide text-muted">
+                Last Name
+              </p>
+              <input
+                type="text"
+                value={inviteForm.lastName}
+                onChange={(e) => setInviteForm((f) => ({ ...f, lastName: e.target.value }))}
+                placeholder="e.g. Morgan"
+                className="w-full rounded-[10px] border border-border bg-background px-[13px] py-3 text-[14px] font-semibold text-foreground outline-none focus:border-brand-orange"
+              />
+            </div>
+          </div>
+          <div className="mt-3">
+            <p className="mb-2 text-[11px] font-bold uppercase tracking-wide text-muted">
+              Email
+            </p>
+            <input
+              type="email"
+              value={inviteForm.email}
+              onChange={(e) => setInviteForm((f) => ({ ...f, email: e.target.value }))}
+              placeholder="e.g. jamie.morgan@email.com"
+              className="w-full rounded-[10px] border border-border bg-background px-[13px] py-3 text-[14px] font-semibold text-foreground outline-none focus:border-brand-orange"
+            />
+          </div>
+          <div className="mt-[18px] flex gap-2.5">
+            <button
+              type="button"
+              onClick={handleSendInvite}
+              className="flex-1 cursor-pointer rounded-[14px] bg-brand-gradient p-[13px] text-center transition-transform hover:-translate-y-0.5"
+            >
+              <span className="font-heading text-[13px] uppercase tracking-wide text-white">
+                Send Invite
+              </span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowInviteForm(false)}
+              className="cursor-pointer rounded-[14px] border-[1.5px] border-border px-[18px] py-[13px]"
+            >
+              <span className="font-heading text-[13px] uppercase tracking-wide text-muted">
+                Cancel
+              </span>
+            </button>
+          </div>
+        </section>
+      )}
+
+      <section className="overflow-hidden rounded-[20px] border border-border bg-card shadow-[0_12px_26px_-18px_rgba(17,17,17,0.16)]">
+        <div className="px-5 pt-[18px]">
+          <div className="mb-4 flex items-center gap-3">
+            <span className="flex h-[38px] w-[38px] shrink-0 items-center justify-center rounded-full bg-brand-gradient text-white">
+              <UsersIcon className="h-4 w-4" />
+            </span>
+            <h2 className="font-heading text-base uppercase tracking-wide text-foreground">
+              Members ({members.length})
+            </h2>
+          </div>
+        </div>
+
+        <div className="overflow-x-auto">
+          <div className="min-w-[760px]">
+            <div className="grid grid-cols-[2fr_1fr_1.1fr_1fr] items-center gap-3 px-5 pb-3">
+              <span className="text-[11px] font-bold uppercase tracking-wide text-muted">Member</span>
+              <span className="text-[11px] font-bold uppercase tracking-wide text-muted">Status</span>
+              <span className="text-[11px] font-bold uppercase tracking-wide text-muted">Coach Review</span>
+              <span className="text-[11px] font-bold uppercase tracking-wide text-muted">Access</span>
+            </div>
+
+            {members.map((m, i) => (
+              <div
+                key={m.email}
+                className="grid grid-cols-[2fr_1fr_1.1fr_1fr] items-center gap-3 border-t border-border px-5 py-3.5"
+              >
+                <div className="flex min-w-0 items-center gap-3">
+                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-brand-gradient">
+                    <span className="font-heading text-[13px] text-white">{initials(m)}</span>
+                  </span>
+                  <div className="min-w-0">
+                    <p className="truncate text-[13.5px] font-bold text-foreground">
+                      {m.firstName} {m.lastName}
+                    </p>
+                    <p className="truncate text-xs font-medium text-muted">{m.email}</p>
+                  </div>
+                </div>
+
+                <div>
+                  <span
+                    className="inline-flex items-center gap-1.5 rounded-full px-[11px] py-[5px]"
+                    style={{ background: m.active ? "rgba(143,174,138,0.15)" : "rgba(17,17,17,0.06)" }}
+                  >
+                    <span
+                      className="h-1.5 w-1.5 rounded-full"
+                      style={{ background: m.active ? "#6a9a63" : "rgba(17,17,17,0.3)" }}
+                    />
+                    <span
+                      className="text-[11px] font-bold tracking-wide"
+                      style={{ color: m.active ? "#4d7548" : "rgba(26,22,19,0.5)" }}
+                    >
+                      {m.active ? "Active" : "Revoked"}
+                    </span>
+                  </span>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => toggleMember(i, "coachReview")}
+                  aria-pressed={m.coachReview}
+                  aria-label={`Toggle Coach Review for ${m.firstName} ${m.lastName}`}
+                  className="relative h-[26px] w-11 shrink-0 cursor-pointer rounded-full transition-colors"
+                  style={{ background: m.coachReview ? "var(--brand-gradient)" : "rgba(17,17,17,0.12)" }}
+                >
+                  <span
+                    className="absolute top-[3px] h-5 w-5 rounded-full bg-white shadow-[0_1px_3px_rgba(17,17,17,0.25)] transition-[left]"
+                    style={{ left: m.coachReview ? "21px" : "3px" }}
+                  />
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => toggleMember(i, "active")}
+                  className="cursor-pointer rounded-[10px] px-3 py-2.5 text-center transition-transform hover:-translate-y-0.5"
+                  style={{
+                    background: m.active ? "#ffffff" : "var(--brand-gradient)",
+                    border: m.active ? "1.5px solid rgba(17,17,17,0.12)" : "none",
+                  }}
+                >
+                  <span
+                    className="text-xs font-bold"
+                    style={{ color: m.active ? "#8a2c1f" : "#ffffff" }}
+                  >
+                    {m.active ? "Revoke" : "Grant"}
+                  </span>
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+    </div>
+  );
+}
