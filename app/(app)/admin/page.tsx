@@ -253,7 +253,108 @@ export default function AdminPage() {
           </div>
         </div>
 
-        <div className="overflow-x-auto">
+        {/* Mobile: stacked cards */}
+        <div className="flex flex-col gap-2.5 px-5 pb-5 md:hidden">
+          {members.map((m) => {
+            const active = m.status === "active";
+            const displayName = m.full_name.trim() || m.email || "—";
+            return (
+              <div
+                key={m.id}
+                className="rounded-[18px] border border-border bg-background px-4 py-3.5"
+              >
+                <div className="flex min-w-0 items-center gap-3">
+                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-brand-gradient">
+                    <span className="font-heading text-[13px] text-white">
+                      {initialsFromFullName(m.full_name || displayName)}
+                    </span>
+                  </span>
+                  <div className="min-w-0">
+                    <p className="truncate text-[13.5px] font-bold text-foreground">
+                      {displayName}
+                    </p>
+                    <p className="truncate text-xs font-medium text-muted">
+                      {m.email ?? "—"}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="mt-3.5 flex flex-wrap items-center gap-x-3 gap-y-2.5">
+                  <span
+                    className="inline-flex items-center gap-1.5 rounded-full px-[11px] py-[5px]"
+                    style={{
+                      background: active
+                        ? "rgba(143,174,138,0.15)"
+                        : "rgba(17,17,17,0.06)",
+                    }}
+                  >
+                    <span
+                      className="h-1.5 w-1.5 rounded-full"
+                      style={{
+                        background: active ? "#6a9a63" : "rgba(17,17,17,0.3)",
+                      }}
+                    />
+                    <span
+                      className="text-[11px] font-bold tracking-wide"
+                      style={{
+                        color: active ? "#4d7548" : "rgba(26,22,19,0.5)",
+                      }}
+                    >
+                      {active ? "Active" : "Revoked"}
+                    </span>
+                  </span>
+
+                  <div className="flex items-center gap-2">
+                    <span className="text-[11px] font-bold uppercase tracking-wide text-muted">
+                      Coach Review
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => void handleToggleCoachReview(m)}
+                      aria-pressed={m.coach_review_enabled}
+                      aria-label={`Toggle Coach Review for ${displayName}`}
+                      className="relative h-[26px] w-11 shrink-0 cursor-pointer rounded-full transition-colors"
+                      style={{
+                        background: m.coach_review_enabled
+                          ? "var(--brand-gradient)"
+                          : "rgba(17,17,17,0.12)",
+                      }}
+                    >
+                      <span
+                        className="absolute top-[3px] h-5 w-5 rounded-full bg-white shadow-[0_1px_3px_rgba(17,17,17,0.25)] transition-[left]"
+                        style={{
+                          left: m.coach_review_enabled ? "21px" : "3px",
+                        }}
+                      />
+                    </button>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => void handleToggleStatus(m)}
+                    className="ml-auto cursor-pointer rounded-[10px] px-3 py-2.5 text-center transition-transform hover:-translate-y-0.5"
+                    style={{
+                      background: active ? "#ffffff" : "var(--brand-gradient)",
+                      border: active
+                        ? "1.5px solid rgba(17,17,17,0.12)"
+                        : "none",
+                    }}
+                  >
+                    <span
+                      className="text-xs font-bold"
+                      style={{ color: active ? "#8a2c1f" : "#ffffff" }}
+                    >
+                      {active ? "Revoke" : "Grant"}
+                    </span>
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Desktop: grid table */}
+        <div className="hidden md:block">
           <div className="min-w-[760px]">
             <div className="grid grid-cols-[2fr_1fr_1.1fr_1fr] items-center gap-3 px-5 pb-3">
               <span className="text-[11px] font-bold uppercase tracking-wide text-muted">
@@ -344,7 +445,9 @@ export default function AdminPage() {
                     className="cursor-pointer rounded-[10px] px-3 py-2.5 text-center transition-transform hover:-translate-y-0.5"
                     style={{
                       background: active ? "#ffffff" : "var(--brand-gradient)",
-                      border: active ? "1.5px solid rgba(17,17,17,0.12)" : "none",
+                      border: active
+                        ? "1.5px solid rgba(17,17,17,0.12)"
+                        : "none",
                     }}
                   >
                     <span
