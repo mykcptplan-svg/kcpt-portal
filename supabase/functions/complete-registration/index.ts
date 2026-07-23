@@ -113,6 +113,7 @@ Deno.serve(async (req: Request) => {
   const { error: insertError } = await callerClient.from("profiles").insert({
     id: user.id,
     full_name: fullName,
+    email: user.email ?? null,
     role: "member",
     status: "active",
   });

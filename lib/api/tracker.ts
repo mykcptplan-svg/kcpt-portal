@@ -49,14 +49,17 @@ async function errorFromResponse(
 export async function getWeeklyTracker(
   weekStart: string,
   accessToken: string,
+  userId?: string,
 ): Promise<WeeklyTrackerEntry | null> {
-  const res = await fetch(
-    `${ENDPOINT}?week_start=${encodeURIComponent(weekStart)}`,
-    {
-      method: "GET",
-      headers: authHeaders(accessToken),
-    },
-  );
+  const params = new URLSearchParams({ week_start: weekStart });
+  if (userId !== undefined) {
+    params.set("user_id", userId);
+  }
+
+  const res = await fetch(`${ENDPOINT}?${params.toString()}`, {
+    method: "GET",
+    headers: authHeaders(accessToken),
+  });
 
   if (!res.ok) {
     throw await errorFromResponse(res, "Unable to load tracker");

@@ -25,7 +25,7 @@ const METRIC_ROWS: {
   { key: "calories", label: "Calories (kcal)" },
   { key: "protein", label: "Protein (g)" },
   { key: "steps", label: "Steps" },
-  { key: "water", label: "Water (oz)" },
+  { key: "water", label: "Water (L)" },
 ];
 
 function emptyChecks(): boolean[][] {
@@ -251,6 +251,7 @@ export default function TrackerPage() {
                     type="number"
                     inputMode="numeric"
                     min={0}
+                    step={key === "water" ? "0.1" : undefined}
                     value={value ?? ""}
                     onChange={(e) => setMetricCell(key, dayIdx, e.target.value)}
                     aria-label={`${label} — ${DAY_LABELS[dayIdx]}`}

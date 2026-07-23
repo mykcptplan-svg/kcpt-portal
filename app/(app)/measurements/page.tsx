@@ -1,32 +1,41 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import AutosaveStatus from "@/components/AutosaveStatus";
+import HeartLoader from "@/components/HeartLoader";
 import { ChartIcon, RulerIcon } from "@/components/icons";
+import { getWeeksList } from "@/lib/api/history";
+import {
+  getWeightMeasurement,
+  saveWeightMeasurement,
+} from "@/lib/api/measurements";
+import { useDebouncedSave } from "@/lib/hooks/useDebouncedSave";
+import { createClient } from "@/lib/supabase/client";
+import { getWeekStart } from "@/lib/week";
 
 type MetricKey = "weight" | "waist" | "hips" | "chest";
 
 type Entry = {
-  date: string;
+  week_start: string;
   weight: number;
   waist: number;
   hips: number;
   chest: number;
 };
 
-const METRICS: { key: MetricKey; label: string; placeholder: string }[] = [
-  { key: "weight", label: "Weight", placeholder: "e.g. 178" },
-  { key: "waist", label: "Waist", placeholder: "e.g. 36.5" },
-  { key: "hips", label: "Hips", placeholder: "e.g. 40" },
-  { key: "chest", label: "Chest", placeholder: "e.g. 43.5" },
-];
+type FormState = {
+  stone: string;
+  lbs: string;
+  waist: string;
+  hips: string;
+  chest: string;
+};
 
-const INITIAL_ENTRIES: Entry[] = [
-  { date: "May 28", weight: 186, waist: 39.5, hips: 42, chest: 45 },
-  { date: "Jun 4", weight: 184, waist: 38.75, hips: 41.5, chest: 44.5 },
-  { date: "Jun 11", weight: 183, waist: 38.25, hips: 41.25, chest: 44.25 },
-  { date: "Jun 18", weight: 181, waist: 37.5, hips: 41, chest: 44 },
-  { date: "Jun 25", weight: 180, waist: 37, hips: 40.5, chest: 43.75 },
-  { date: "Jul 2", weight: 178, waist: 36.5, hips: 40, chest: 43.5 },
+const METRICS: { key: MetricKey; label: string }[] = [
+  { key: "weight", label: "Weight" },
+  { key: "waist", label: "Waist" },
+  { key: "hips", label: "Hips" },
+  { key: "chest", label: "Chest" },
 ];
 
 const CHART_W = 600;
@@ -35,33 +44,203 @@ const PAD_X = 24;
 const PAD_TOP = 16;
 const PAD_BOTTOM = 16;
 
-export default function MeasurementsPage() {
-  const [entries, setEntries] = useState<Entry[]>(INITIAL_ENTRIES);
-  const [activeMetric, setActiveMetric] = useState<MetricKey>("weight");
-  const [form, setForm] = useState({ date: "", weight: "", waist: "", hips: "", chest: "" });
-  const [showSaved, setShowSaved] = useState(false);
+function formatChartLabel(weekStart: string): string {
+  const [year, month, day] = weekStart.split("-").map(Number);
+  const monday = new Date(year, month - 1, day);
+  return monday.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+}
 
-  function setFormField(key: keyof typeof form, value: string) {
+function totalLbsFromStoneLbs(stone: number, lbs: number): number {
+  return stone * 14 + lbs;
+}
+
+function stoneLbsFromTotal(totalLbs: number): { stone: number; lbs: number } {
+  const stone = Math.floor(totalLbs / 14);
+  const lbs = Math.round((totalLbs - stone * 14) * 100) / 100;
+  return { stone, lbs };
+}
+
+function emptyForm(): FormState {
+  return { stone: "", lbs: "", waist: "", hips: "", chest: "" };
+}
+
+function formFromEntry(entry: Entry | null | undefined): FormState {
+  if (!entry) return emptyForm();
+  const { stone, lbs } = stoneLbsFromTotal(entry.weight);
+  return {
+    stone: String(stone),
+    lbs: String(lbs),
+    waist: String(entry.waist),
+    hips: String(entry.hips),
+    chest: String(entry.chest),
+  };
+}
+
+function entryFromRow(row: {
+  week_start: string;
+  weight: number;
+  waist: number;
+  hips: number;
+  chest: number;
+}): Entry {
+  return {
+    week_start: row.week_start,
+    weight: row.weight,
+    waist: row.waist,
+    hips: row.hips,
+    chest: row.chest,
+  };
+}
+
+function parsePositive(raw: string): number | null {
+  if (raw.trim() === "") return null;
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n <= 0) return null;
+  return n;
+}
+
+function parseNonNegative(raw: string): number | null {
+  if (raw.trim() === "") return null;
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n < 0) return null;
+  return n;
+}
+
+export default function MeasurementsPage() {
+  const supabase = useMemo(() => createClient(), []);
+  const weekStart = useMemo(() => getWeekStart(), []);
+
+  const [entries, setEntries] = useState<Entry[]>([]);
+  const [activeMetric, setActiveMetric] = useState<MetricKey>("weight");
+  const [form, setForm] = useState<FormState>(emptyForm);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const accessTokenRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function load() {
+      try {
+        const {
+          data: { session },
+        } = await supabase.auth.getSession();
+        if (!session) {
+          if (!cancelled) setLoadError("Not logged in.");
+          return;
+        }
+        accessTokenRef.current = session.access_token;
+        const token = session.access_token;
+
+        const [currentRow, weeks] = await Promise.all([
+          getWeightMeasurement(weekStart, token),
+          getWeeksList(token),
+        ]);
+        if (cancelled) return;
+
+        const measuredWeeks = weeks.filter((w) => w.has_measurements);
+        const historyRows = await Promise.all(
+          measuredWeeks.map((w) => getWeightMeasurement(w.week_start, token)),
+        );
+        if (cancelled) return;
+
+        const historyEntries = historyRows
+          .filter((row): row is NonNullable<typeof row> => row !== null)
+          .map(entryFromRow)
+          .sort((a, b) => a.week_start.localeCompare(b.week_start));
+
+        setEntries(historyEntries);
+        setForm(formFromEntry(currentRow ? entryFromRow(currentRow) : null));
+      } catch (err) {
+        if (!cancelled) {
+          setLoadError(
+            err instanceof Error ? err.message : "Unable to load measurements.",
+          );
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
+
+    void load();
+    return () => {
+      cancelled = true;
+    };
+  }, [supabase, weekStart]);
+
+  function setFormField(key: keyof FormState, value: string) {
     setForm((prev) => ({ ...prev, [key]: value }));
   }
 
-  function handleSave() {
-    if (!form.weight && !form.waist && !form.hips && !form.chest) return;
-    const last = entries.at(-1);
-    const entry: Entry = {
-      date: form.date || "New",
-      weight: parseFloat(form.weight) || last?.weight || 0,
-      waist: parseFloat(form.waist) || last?.waist || 0,
-      hips: parseFloat(form.hips) || last?.hips || 0,
-      chest: parseFloat(form.chest) || last?.chest || 0,
-    };
-    setEntries((prev) => [...prev, entry]);
-    setForm({ date: "", weight: "", waist: "", hips: "", chest: "" });
-    setShowSaved(true);
-    setTimeout(() => setShowSaved(false), 2200);
-  }
+  const { status, error: saveError } = useDebouncedSave(
+    form,
+    async (value) => {
+      const accessToken = accessTokenRef.current;
+      if (!accessToken) throw new Error("Not logged in.");
+
+      const stonePart = parseNonNegative(value.stone);
+      const lbsPart = parseNonNegative(value.lbs);
+      const hasWeightInput =
+        value.stone.trim() !== "" || value.lbs.trim() !== "";
+      const weight = hasWeightInput
+        ? totalLbsFromStoneLbs(stonePart ?? 0, lbsPart ?? 0)
+        : null;
+      const waist = parsePositive(value.waist);
+      const hips = parsePositive(value.hips);
+      const chest = parsePositive(value.chest);
+
+      // Edge requires all four metrics to be positive — skip incomplete drafts.
+      if (
+        weight === null ||
+        weight <= 0 ||
+        waist === null ||
+        hips === null ||
+        chest === null
+      ) {
+        return;
+      }
+
+      await saveWeightMeasurement(
+        {
+          week_start: weekStart,
+          weight,
+          waist,
+          hips,
+          chest,
+        },
+        accessToken,
+      );
+
+      const saved: Entry = { week_start: weekStart, weight, waist, hips, chest };
+      setEntries((prev) => {
+        const idx = prev.findIndex((e) => e.week_start === weekStart);
+        if (idx === -1) {
+          return [...prev, saved].sort((a, b) =>
+            a.week_start.localeCompare(b.week_start),
+          );
+        }
+        const next = prev.slice();
+        next[idx] = saved;
+        return next;
+      });
+    },
+    { skip: loading },
+  );
 
   const chart = useMemo(() => {
+    if (entries.length === 0) {
+      return {
+        points: [] as { x: number; y: number; dateLabel: string }[],
+        linePath: "",
+        areaPath: "",
+        gridLines: [0, 0.5, 1].map(
+          (t) => PAD_TOP + t * (CHART_H - PAD_TOP - PAD_BOTTOM),
+        ),
+        current: 0,
+        delta: 0,
+      };
+    }
+
     const values = entries.map((e) => e[activeMetric]);
     const min = Math.min(...values);
     const max = Math.max(...values);
@@ -70,8 +249,10 @@ export default function MeasurementsPage() {
 
     const points = entries.map((e, i) => {
       const x = n === 1 ? CHART_W / 2 : PAD_X + (i * (CHART_W - 2 * PAD_X)) / (n - 1);
-      const y = PAD_TOP + (1 - (e[activeMetric] - min) / range) * (CHART_H - PAD_TOP - PAD_BOTTOM);
-      return { x, y, dateLabel: e.date };
+      const y =
+        PAD_TOP +
+        (1 - (e[activeMetric] - min) / range) * (CHART_H - PAD_TOP - PAD_BOTTOM);
+      return { x, y, dateLabel: formatChartLabel(e.week_start) };
     });
 
     const linePath = points
@@ -81,7 +262,9 @@ export default function MeasurementsPage() {
       ? `${linePath} L${points.at(-1)!.x.toFixed(1)},${CHART_H - PAD_BOTTOM} L${points[0].x.toFixed(1)},${CHART_H - PAD_BOTTOM} Z`
       : "";
 
-    const gridLines = [0, 0.5, 1].map((t) => PAD_TOP + t * (CHART_H - PAD_TOP - PAD_BOTTOM));
+    const gridLines = [0, 0.5, 1].map(
+      (t) => PAD_TOP + t * (CHART_H - PAD_TOP - PAD_BOTTOM),
+    );
 
     const current = values.at(-1) ?? 0;
     const first = values[0] ?? 0;
@@ -91,6 +274,14 @@ export default function MeasurementsPage() {
   }, [entries, activeMetric]);
 
   const metricLabel = METRICS.find((m) => m.key === activeMetric)!.label;
+
+  if (loading) {
+    return (
+      <div className="flex flex-1 items-center justify-center px-6 py-10">
+        <HeartLoader size={192} />
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-1 flex-col gap-4 px-5 py-6 md:mx-auto md:w-full md:max-w-3xl md:px-10 md:py-10">
@@ -103,7 +294,9 @@ export default function MeasurementsPage() {
         </p>
       </div>
 
-      {/* Log New Entry */}
+      <AutosaveStatus status={status} />
+
+      {/* Log New Entry — this week only */}
       <section className="rounded-[20px] border border-border bg-card p-5 shadow-[0_12px_26px_-18px_rgba(17,17,17,0.16)]">
         <div className="mb-4 flex items-center gap-3">
           <span className="flex h-[38px] w-[38px] shrink-0 items-center justify-center rounded-full bg-brand-gradient text-white">
@@ -114,50 +307,74 @@ export default function MeasurementsPage() {
           </h2>
         </div>
 
-        <p className="mb-2 text-[11px] font-bold uppercase tracking-wide text-muted">
-          Date
-        </p>
-        <input
-          type="text"
-          value={form.date}
-          onChange={(e) => setFormField("date", e.target.value)}
-          placeholder="e.g. Jul 23"
-          className="w-full rounded-[10px] border border-border bg-background px-[13px] py-3 text-[14px] font-semibold text-foreground outline-none focus:border-brand-orange"
-        />
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <p className="mb-2 text-[11px] font-bold uppercase tracking-wide text-muted">
+              Stone
+            </p>
+            <input
+              type="number"
+              inputMode="decimal"
+              value={form.stone}
+              onChange={(e) => setFormField("stone", e.target.value)}
+              placeholder="e.g. 12"
+              className="w-full rounded-[10px] border border-border bg-background px-[13px] py-3 text-[14px] font-semibold text-foreground outline-none focus:border-brand-orange"
+            />
+          </div>
+          <div>
+            <p className="mb-2 text-[11px] font-bold uppercase tracking-wide text-muted">
+              Lbs
+            </p>
+            <input
+              type="number"
+              inputMode="decimal"
+              value={form.lbs}
+              onChange={(e) => setFormField("lbs", e.target.value)}
+              placeholder="e.g. 6"
+              className="w-full rounded-[10px] border border-border bg-background px-[13px] py-3 text-[14px] font-semibold text-foreground outline-none focus:border-brand-orange"
+            />
+          </div>
 
-        <div className="mt-4 grid grid-cols-2 gap-3">
-          {METRICS.map((field) => (
-            <div key={field.key}>
-              <p className="mb-2 text-[11px] font-bold uppercase tracking-wide text-muted">
-                {field.label}
-              </p>
-              <input
-                type="number"
-                inputMode="decimal"
-                value={form[field.key]}
-                onChange={(e) => setFormField(field.key, e.target.value)}
-                placeholder={field.placeholder}
-                className="w-full rounded-[10px] border border-border bg-background px-[13px] py-3 text-[14px] font-semibold text-foreground outline-none focus:border-brand-orange"
-              />
-            </div>
-          ))}
+          <div>
+            <p className="mb-2 text-[11px] font-bold uppercase tracking-wide text-muted">
+              Waist
+            </p>
+            <input
+              type="number"
+              inputMode="decimal"
+              value={form.waist}
+              onChange={(e) => setFormField("waist", e.target.value)}
+              placeholder="e.g. 36.5"
+              className="w-full rounded-[10px] border border-border bg-background px-[13px] py-3 text-[14px] font-semibold text-foreground outline-none focus:border-brand-orange"
+            />
+          </div>
+          <div>
+            <p className="mb-2 text-[11px] font-bold uppercase tracking-wide text-muted">
+              Hips
+            </p>
+            <input
+              type="number"
+              inputMode="decimal"
+              value={form.hips}
+              onChange={(e) => setFormField("hips", e.target.value)}
+              placeholder="e.g. 40"
+              className="w-full rounded-[10px] border border-border bg-background px-[13px] py-3 text-[14px] font-semibold text-foreground outline-none focus:border-brand-orange"
+            />
+          </div>
+          <div>
+            <p className="mb-2 text-[11px] font-bold uppercase tracking-wide text-muted">
+              Chest
+            </p>
+            <input
+              type="number"
+              inputMode="decimal"
+              value={form.chest}
+              onChange={(e) => setFormField("chest", e.target.value)}
+              placeholder="e.g. 43.5"
+              className="w-full rounded-[10px] border border-border bg-background px-[13px] py-3 text-[14px] font-semibold text-foreground outline-none focus:border-brand-orange"
+            />
+          </div>
         </div>
-
-        <button
-          type="button"
-          onClick={handleSave}
-          className="mt-[18px] w-full cursor-pointer rounded-2xl bg-brand-gradient p-3.5 text-center transition-transform hover:-translate-y-0.5"
-        >
-          <span className="font-heading text-sm uppercase tracking-wide text-white">
-            Save Entry
-          </span>
-        </button>
-
-        {showSaved && (
-          <p className="mt-2.5 text-center text-xs font-bold text-[#8fae8a]">
-            Entry saved
-          </p>
-        )}
       </section>
 
       {/* Trend */}
@@ -191,74 +408,93 @@ export default function MeasurementsPage() {
           })}
         </div>
 
-        <div className="mb-3.5 flex items-baseline gap-3">
-          <span className="font-heading text-[30px] text-foreground">
-            {chart.current} · {metricLabel}
-          </span>
-          <span
-            className="text-[13px] font-bold"
-            style={{
-              color:
-                chart.delta === 0
-                  ? "var(--muted)"
-                  : chart.delta < 0
-                    ? "#6a9a63"
-                    : "var(--brand-orange-dark)",
-            }}
-          >
-            {chart.delta === 0
-              ? "No change"
-              : `${chart.delta > 0 ? "+" : ""}${chart.delta.toFixed(1)} since start`}
-          </span>
-        </div>
+        {entries.length === 0 ? (
+          <p className="text-sm text-muted">
+            No measurements yet. Fill in this week&apos;s entry to start your trend.
+          </p>
+        ) : (
+          <>
+            <div className="mb-3.5 flex items-baseline gap-3">
+              <span className="font-heading text-[30px] text-foreground">
+                {chart.current} · {metricLabel}
+              </span>
+              <span
+                className="text-[13px] font-bold"
+                style={{
+                  color:
+                    chart.delta === 0
+                      ? "var(--muted)"
+                      : chart.delta < 0
+                        ? "#6a9a63"
+                        : "var(--brand-orange-dark)",
+                }}
+              >
+                {chart.delta === 0
+                  ? "No change"
+                  : `${chart.delta > 0 ? "+" : ""}${chart.delta.toFixed(1)} since start`}
+              </span>
+            </div>
 
-        <svg
-          viewBox={`0 0 ${CHART_W} ${CHART_H}`}
-          className="block w-full overflow-visible"
-          style={{ height: "auto" }}
-        >
-          {chart.gridLines.map((y, i) => (
-            <line
-              key={i}
-              x1={0}
-              x2={CHART_W}
-              y1={y}
-              y2={y}
-              stroke="rgba(17,17,17,0.07)"
-              strokeWidth={1}
-            />
-          ))}
-          <path
-            d={chart.areaPath}
-            fill="url(#trendFill)"
-            stroke="none"
-          />
-          <path
-            d={chart.linePath}
-            fill="none"
-            stroke="#EC4A31"
-            strokeWidth={3}
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-          <defs>
-            <linearGradient id="trendFill" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor="#F7A235" stopOpacity={0.22} />
-              <stop offset="100%" stopColor="#F7A235" stopOpacity={0} />
-            </linearGradient>
-          </defs>
-          {chart.points.map((pt, i) => (
-            <circle key={i} cx={pt.x} cy={pt.y} r={5} fill="#ffffff" stroke="#EC4A31" strokeWidth={3} />
-          ))}
-        </svg>
-        <div className="mt-2 flex justify-between px-0.5">
-          {chart.points.map((pt, i) => (
-            <span key={i} className="flex-1 text-center text-[10.5px] font-semibold text-muted">
-              {pt.dateLabel}
-            </span>
-          ))}
-        </div>
+            <svg
+              viewBox={`0 0 ${CHART_W} ${CHART_H}`}
+              className="block w-full overflow-visible"
+              style={{ height: "auto" }}
+            >
+              {chart.gridLines.map((y, i) => (
+                <line
+                  key={i}
+                  x1={0}
+                  x2={CHART_W}
+                  y1={y}
+                  y2={y}
+                  stroke="rgba(17,17,17,0.07)"
+                  strokeWidth={1}
+                />
+              ))}
+              <path d={chart.areaPath} fill="url(#trendFill)" stroke="none" />
+              <path
+                d={chart.linePath}
+                fill="none"
+                stroke="#EC4A31"
+                strokeWidth={3}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+              <defs>
+                <linearGradient id="trendFill" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="#F7A235" stopOpacity={0.22} />
+                  <stop offset="100%" stopColor="#F7A235" stopOpacity={0} />
+                </linearGradient>
+              </defs>
+              {chart.points.map((pt, i) => (
+                <circle
+                  key={i}
+                  cx={pt.x}
+                  cy={pt.y}
+                  r={5}
+                  fill="#ffffff"
+                  stroke="#EC4A31"
+                  strokeWidth={3}
+                />
+              ))}
+            </svg>
+            <div className="mt-2 flex justify-between px-0.5">
+              {chart.points.map((pt, i) => (
+                <span
+                  key={i}
+                  className="flex-1 text-center text-[10.5px] font-semibold text-muted"
+                >
+                  {pt.dateLabel}
+                </span>
+              ))}
+            </div>
+          </>
+        )}
       </section>
+
+      {(loadError || saveError) && (
+        <p className="text-xs text-brand-orange-dark">{loadError ?? saveError}</p>
+      )}
     </div>
   );
 }

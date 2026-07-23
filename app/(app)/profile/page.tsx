@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { LogOutIcon } from "@/components/icons";
-import { getProfile } from "@/lib/api/profile";
+import { useProfile } from "@/lib/context/ProfileContext";
 import { createClient } from "@/lib/supabase/client";
 
 function initialsFromName(fullName: string): string {
@@ -16,54 +16,17 @@ function initialsFromName(fullName: string): string {
 export default function ProfilePage() {
   const supabase = useMemo(() => createClient(), []);
   const router = useRouter();
-
-  const [fullName, setFullName] = useState("");
-  const [email, setEmail] = useState<string | null>(null);
-  const [memberSince, setMemberSince] = useState<string | null>(null);
+  const { profile, loading } = useProfile();
   const [signingOut, setSigningOut] = useState(false);
 
-  useEffect(() => {
-    let cancelled = false;
-
-    async function load() {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-      if (cancelled || !session) return;
-
-      try {
-        const profile = await getProfile(session.access_token);
-        if (cancelled) return;
-
-        setFullName(profile.full_name?.trim() ?? "");
-        setEmail(profile.email);
-        if (profile.created_at) {
-          setMemberSince(
-            new Date(profile.created_at).toLocaleDateString("en-US", {
-              month: "long",
-              year: "numeric",
-            }),
-          );
-        }
-      } catch {
-        if (cancelled) return;
-        setEmail(session.user.email ?? null);
-        if (session.user.created_at) {
-          setMemberSince(
-            new Date(session.user.created_at).toLocaleDateString("en-US", {
-              month: "long",
-              year: "numeric",
-            }),
-          );
-        }
-      }
-    }
-
-    void load();
-    return () => {
-      cancelled = true;
-    };
-  }, [supabase]);
+  const fullName = profile?.full_name?.trim() ?? "";
+  const email = profile?.email ?? null;
+  const memberSince = profile?.created_at
+    ? new Date(profile.created_at).toLocaleDateString("en-US", {
+        month: "long",
+        year: "numeric",
+      })
+    : null;
 
   async function handleLogOut() {
     setSigningOut(true);
@@ -71,7 +34,9 @@ export default function ProfilePage() {
     router.push("/login");
   }
 
-  const displayName = fullName || email || "…";
+  const displayName = loading
+    ? "…"
+    : fullName || email || "…";
   const initials = fullName
     ? initialsFromName(fullName)
     : email

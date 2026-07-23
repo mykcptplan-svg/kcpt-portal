@@ -15,7 +15,7 @@ Keep this file up to date as decisions evolve. Any AI agent (Cursor, Claude, or 
 ## Data model
 
 - Tables: `profiles`, `weekly_base_plans`, `weekly_tracker_entries`, `weight_measurements`.
-- RLS policy pattern: members can only select/insert/update rows where `user_id = auth.uid()`. The coach/admin role (in `profiles.role`) can read all rows across all tables (read-only) for the Coach Review feature. Only `profiles.status` is writable by the admin role, never member content tables directly.
+- RLS policy pattern: members can only select/insert/update rows where `user_id = auth.uid()`. The coach/admin role (in `profiles.role`) can read all rows across all tables (read-only) for the Coach Review feature. Only `profiles.status` and `profiles.coach_review_enabled` are writable by the admin role, never member content tables directly. A BEFORE UPDATE trigger also blocks non-admins from changing `role`, `status`, or `coach_review_enabled` on their own row.
 - `WeeklyTrackerEntry.habits` shape: `{ name: string; days: boolean[] }[]` (`days` = 7 flags, Mon–Sun).
 - `WeeklyTrackerEntry.daily_metrics` shape: `{ calories, protein, steps, water }` — each a `(number | null)[]` of length 7 (Mon–Sun); unset days are `null`, not `0`.
 - `WeeklyBasePlan.evening_meals` shape: `{ day: string; meal: string; approach: "meal_bank" | "orange_base" | "own" }[]` (one entry per day of the week).

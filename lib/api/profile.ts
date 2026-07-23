@@ -18,12 +18,22 @@
  * No retry, caching, or debounce here.
  */
 
+export type CallerProfileRole = "member" | "coach" | "admin";
+
 export type CallerProfile = {
   full_name: string;
   status: string;
+  role: CallerProfileRole;
   email: string | null;
   created_at: string | null;
 };
+
+function normalizeRole(value: unknown): CallerProfileRole {
+  if (value === "coach" || value === "admin" || value === "member") {
+    return value;
+  }
+  return "member";
+}
 
 const ENDPOINT = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/get-profile`;
 
@@ -60,5 +70,8 @@ export async function getProfile(
   }
 
   const body = (await res.json()) as { data: CallerProfile };
-  return body.data;
+  return {
+    ...body.data,
+    role: normalizeRole(body.data.role),
+  };
 }

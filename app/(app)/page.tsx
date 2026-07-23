@@ -6,8 +6,8 @@ import WeekOverviewCard from "@/components/dashboard/WeekOverviewCard";
 import HeartLoader from "@/components/HeartLoader";
 import { HistoryIcon, PlanIcon, RulerIcon, TrackerIcon } from "@/components/icons";
 import { getWeeklyBasePlan } from "@/lib/api/basePlan";
-import { getProfile } from "@/lib/api/profile";
 import { getWeeklyTracker } from "@/lib/api/tracker";
+import { useProfile } from "@/lib/context/ProfileContext";
 import { createClient } from "@/lib/supabase/client";
 import { formatWeekRange, getWeekStart } from "@/lib/week";
 
@@ -16,41 +16,45 @@ function emailPrefix(email: string | undefined | null): string | null {
   return email.split("@")[0] || null;
 }
 
+function firstNameFromFullName(fullName: string): string {
+  const trimmed = fullName.trim();
+  if (!trimmed) return "";
+  return trimmed.split(/\s+/)[0] ?? trimmed;
+}
+
 export default function Home() {
   const supabase = useMemo(() => createClient(), []);
   const weekStart = useMemo(() => getWeekStart(), []);
   const weekRange = useMemo(() => formatWeekRange(weekStart), [weekStart]);
+  const { profile, loading: profileLoading } = useProfile();
 
-  const [firstName, setFirstName] = useState("there");
-  const [isRevoked, setIsRevoked] = useState(false);
   const [basePlanFilled, setBasePlanFilled] = useState(false);
   const [trackerDaysLogged, setTrackerDaysLogged] = useState(0);
-  const [loading, setLoading] = useState(true);
+  const [weekLoading, setWeekLoading] = useState(true);
+
+  const isRevoked = profile?.status === "revoked";
+  const firstName =
+    firstNameFromFullName(profile?.full_name ?? "") ||
+    emailPrefix(profile?.email) ||
+    "there";
 
   useEffect(() => {
+    if (profileLoading) return;
+
+    if (!profile || isRevoked) {
+      setWeekLoading(false);
+      return;
+    }
+
     let cancelled = false;
 
-    async function load() {
+    async function loadWeek() {
+      setWeekLoading(true);
       const {
         data: { session },
       } = await supabase.auth.getSession();
       if (!session) {
-        if (!cancelled) setLoading(false);
-        return;
-      }
-
-      const fallbackName =
-        emailPrefix(session.user.email) ?? "there";
-
-      const profile = await getProfile(session.access_token).catch(() => null);
-      if (cancelled) return;
-
-      const fullName = profile?.full_name?.trim();
-      setFirstName(fullName || fallbackName);
-
-      if (profile?.status === "revoked") {
-        setIsRevoked(true);
-        setLoading(false);
+        if (!cancelled) setWeekLoading(false);
         return;
       }
 
@@ -76,16 +80,16 @@ export default function Home() {
         setTrackerDaysLogged(daysLogged);
       }
 
-      setLoading(false);
+      setWeekLoading(false);
     }
 
-    void load();
+    void loadWeek();
     return () => {
       cancelled = true;
     };
-  }, [supabase, weekStart]);
+  }, [supabase, weekStart, profileLoading, profile, isRevoked]);
 
-  if (loading) {
+  if (profileLoading || weekLoading) {
     return (
       <div className="flex flex-1 items-center justify-center px-6 py-10">
         <HeartLoader size={192} />

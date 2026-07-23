@@ -7,10 +7,10 @@
  * derived server-side from the authenticated token — never from the
  * request body or query params.
  *
- * full_name and status come from public.get_own_profile_summary (SECURITY
- * DEFINER, self-only) so revoked members can still read their own status
- * after own-row RLS requires is_active(). email and created_at come from
- * the auth user (profiles has no created_at column).
+ * full_name, status, and role come from public.get_own_profile_summary
+ * (SECURITY DEFINER, self-only) so revoked members can still read their
+ * own status after own-row RLS requires is_active(). email and created_at
+ * come from the auth user (profiles has no created_at column).
  */
 
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
@@ -91,6 +91,7 @@ Deno.serve(async (req: Request) => {
       data: {
         full_name: profile?.full_name ?? "",
         status: profile?.status ?? "",
+        role: profile?.role ?? "",
         email: user.email ?? null,
         created_at: user.created_at ?? null,
       },

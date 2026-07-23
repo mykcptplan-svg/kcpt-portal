@@ -1,18 +1,27 @@
 "use client";
 
-import type { ReactNode } from "react";
+import { useMemo, type ReactNode } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   BellIcon,
+  ChartIcon,
   HomeIcon,
   PlanIcon,
   ProfileIcon,
   TrackerIcon,
+  UsersIcon,
 } from "@/components/icons";
+import { useProfile } from "@/lib/context/ProfileContext";
 
-const navItems = [
+type NavItem = {
+  label: string;
+  href: string;
+  icon: ReactNode;
+};
+
+const baseNavItems: NavItem[] = [
   {
     label: "Home",
     href: "/",
@@ -33,12 +42,41 @@ const navItems = [
     href: "/profile",
     icon: <ProfileIcon className="h-5 w-5" />,
   },
-] as const;
+];
+
+const coachReviewItem: NavItem = {
+  label: "Coach Review",
+  href: "/coach-review",
+  icon: <ChartIcon className="h-5 w-5" />,
+};
+
+const adminPanelItem: NavItem = {
+  label: "Admin Panel",
+  href: "/admin",
+  icon: <UsersIcon className="h-5 w-5" />,
+};
 
 export default function NavShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
+  const { profile, loading } = useProfile();
   const isActive = (href: string) =>
     href === "/" ? pathname === "/" : pathname.startsWith(href);
+
+  const navItems = useMemo(() => {
+    if (loading) return baseNavItems;
+
+    const role = profile?.role ?? "member";
+    const items = [...baseNavItems];
+
+    if (role === "coach" || role === "admin") {
+      items.push(coachReviewItem);
+    }
+    if (role === "admin") {
+      items.push(adminPanelItem);
+    }
+
+    return items;
+  }, [loading, profile?.role]);
 
   return (
     <div className="flex min-h-full flex-1 bg-background">

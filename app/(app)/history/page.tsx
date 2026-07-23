@@ -1,31 +1,41 @@
 "use client";
 
-import { useState } from "react";
-import { ChevronDownIcon, ClipboardCheckIcon, PlanIcon, RulerIcon } from "@/components/icons";
+import { useEffect, useMemo, useRef, useState } from "react";
+import HeartLoader from "@/components/HeartLoader";
+import {
+  ChevronDownIcon,
+  ClipboardCheckIcon,
+  PlanIcon,
+  RulerIcon,
+} from "@/components/icons";
+import { getWeeklyBasePlan } from "@/lib/api/basePlan";
+import { getWeeksList, type WeekSummary } from "@/lib/api/history";
+import { getWeightMeasurement } from "@/lib/api/measurements";
+import { getWeeklyTracker } from "@/lib/api/tracker";
+import { createClient } from "@/lib/supabase/client";
+import {
+  countTrackerDaysLogged,
+  findClosestEarlierMeasuredWeek,
+} from "@/lib/trackerStats";
+import { formatWeekRange } from "@/lib/week";
+import type {
+  WeeklyBasePlan,
+  WeeklyTrackerEntry,
+  WeightMeasurement,
+} from "@/types";
 
-type Week = {
-  label: string;
-  foodPlanDone: boolean;
-  trackerDays: number;
-  trackerTotal: number;
-  measurementsLogged: boolean;
-  weightChange: number | null;
+type WeekDetailCache = {
+  plan: WeeklyBasePlan | null;
+  tracker: WeeklyTrackerEntry | null;
+  measurement: WeightMeasurement | null;
 };
 
-const WEEKS: Week[] = [
-  { label: "Jul 14 – Jul 20", foodPlanDone: true, trackerDays: 7, trackerTotal: 7, measurementsLogged: true, weightChange: -1.2 },
-  { label: "Jul 7 – Jul 13", foodPlanDone: true, trackerDays: 6, trackerTotal: 7, measurementsLogged: true, weightChange: -0.8 },
-  { label: "Jun 30 – Jul 6", foodPlanDone: true, trackerDays: 5, trackerTotal: 7, measurementsLogged: false, weightChange: null },
-  { label: "Jun 23 – Jun 29", foodPlanDone: false, trackerDays: 3, trackerTotal: 7, measurementsLogged: true, weightChange: -0.5 },
-  { label: "Jun 16 – Jun 22", foodPlanDone: true, trackerDays: 7, trackerTotal: 7, measurementsLogged: true, weightChange: -1.0 },
-  { label: "Jun 9 – Jun 15", foodPlanDone: true, trackerDays: 7, trackerTotal: 7, measurementsLogged: true, weightChange: -0.6 },
-  { label: "Jun 2 – Jun 8", foodPlanDone: false, trackerDays: 2, trackerTotal: 7, measurementsLogged: false, weightChange: null },
-  { label: "May 26 – Jun 1", foodPlanDone: true, trackerDays: 4, trackerTotal: 7, measurementsLogged: true, weightChange: -0.3 },
-];
-
-function computeStatus(w: Week): { key: "complete" | "partial" | "none"; label: string } {
-  const scores = [w.foodPlanDone, w.trackerDays === w.trackerTotal, w.measurementsLogged];
-  const completeCount = scores.filter(Boolean).length;
+function computeStatus(w: WeekSummary): {
+  key: "complete" | "partial" | "none";
+  label: string;
+} {
+  const flags = [w.has_base_plan, w.has_tracker, w.has_measurements];
+  const completeCount = flags.filter(Boolean).length;
   if (completeCount === 3) return { key: "complete", label: "Complete" };
   if (completeCount === 0) return { key: "none", label: "No Data" };
   return { key: "partial", label: "Partial" };
@@ -34,11 +44,175 @@ function computeStatus(w: Week): { key: "complete" | "partial" | "none"; label: 
 const STATUS_STYLES = {
   complete: { bg: "rgba(143,174,138,0.15)", dot: "#6a9a63", color: "#4d7548" },
   partial: { bg: "rgba(251,147,58,0.14)", dot: "#FB933A", color: "#B8681D" },
-  none: { bg: "rgba(17,17,17,0.06)", dot: "rgba(17,17,17,0.3)", color: "rgba(26,22,19,0.5)" },
+  none: {
+    bg: "rgba(17,17,17,0.06)",
+    dot: "rgba(17,17,17,0.3)",
+    color: "rgba(26,22,19,0.5)",
+  },
 } as const;
 
+function measurementSummary(
+  week: WeekSummary,
+  detail: WeekDetailCache | undefined,
+  weeks: WeekSummary[],
+  measurementByWeek: Record<string, WeightMeasurement | null>,
+): string {
+  if (!week.has_measurements || !detail?.measurement) {
+    return "No entry this week";
+  }
+  const priorWeek = findClosestEarlierMeasuredWeek(weeks, week.week_start);
+  const prior = priorWeek
+    ? measurementByWeek[priorWeek.week_start]
+    : undefined;
+  if (prior == null) return "Logged this week";
+  const delta = detail.measurement.weight - prior.weight;
+  const formatted = `${delta > 0 ? "+" : ""}${delta.toFixed(1)}`;
+  return `Logged · ${formatted} since last week`;
+}
+
 export default function HistoryPage() {
-  const [expandedIndex, setExpandedIndex] = useState(0);
+  const supabase = useMemo(() => createClient(), []);
+  const accessTokenRef = useRef<string | null>(null);
+
+  const [weeks, setWeeks] = useState<WeekSummary[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [expandedWeekStart, setExpandedWeekStart] = useState<string | null>(
+    null,
+  );
+  const [detailCache, setDetailCache] = useState<
+    Record<string, WeekDetailCache>
+  >({});
+  const [measurementByWeek, setMeasurementByWeek] = useState<
+    Record<string, WeightMeasurement | null>
+  >({});
+  const measurementByWeekRef = useRef(measurementByWeek);
+  measurementByWeekRef.current = measurementByWeek;
+  const [expandLoading, setExpandLoading] = useState<string | null>(null);
+  const [expandError, setExpandError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function load() {
+      try {
+        const {
+          data: { session },
+        } = await supabase.auth.getSession();
+        if (!session) {
+          if (!cancelled) setLoadError("Not logged in.");
+          return;
+        }
+        accessTokenRef.current = session.access_token;
+
+        const list = await getWeeksList(session.access_token);
+        if (cancelled) return;
+
+        setWeeks(list);
+        if (list.length > 0) {
+          setExpandedWeekStart(list[0].week_start);
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setLoadError(
+            err instanceof Error ? err.message : "Unable to load history.",
+          );
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
+
+    void load();
+    return () => {
+      cancelled = true;
+    };
+  }, [supabase]);
+
+  useEffect(() => {
+    if (!expandedWeekStart) return;
+    if (detailCache[expandedWeekStart]) return;
+
+    const token = accessTokenRef.current;
+    if (!token) return;
+
+    const weekStart = expandedWeekStart;
+    const week = weeks.find((w) => w.week_start === weekStart);
+    if (!week) return;
+
+    let cancelled = false;
+
+    async function fetchDetail() {
+      setExpandLoading(weekStart);
+      setExpandError(null);
+      try {
+        const priorWeek = findClosestEarlierMeasuredWeek(weeks, weekStart);
+        const priorKey = priorWeek?.week_start;
+        const priorAlreadyCached =
+          priorKey != null && priorKey in measurementByWeekRef.current;
+
+        const [plan, tracker, measurement, priorMeasurement] = await Promise.all([
+          getWeeklyBasePlan(weekStart, token!).catch(() => null),
+          getWeeklyTracker(weekStart, token!).catch(() => null),
+          getWeightMeasurement(weekStart, token!).catch(() => null),
+          priorWeek && !priorAlreadyCached
+            ? getWeightMeasurement(priorWeek.week_start, token!).catch(() => null)
+            : Promise.resolve(
+                priorKey != null
+                  ? (measurementByWeekRef.current[priorKey] ?? null)
+                  : null,
+              ),
+        ]);
+
+        if (cancelled) return;
+
+        setDetailCache((prev) => ({
+          ...prev,
+          [weekStart]: { plan, tracker, measurement },
+        }));
+
+        setMeasurementByWeek((prev) => {
+          const next = { ...prev };
+          next[weekStart] = measurement;
+          if (priorKey != null) {
+            next[priorKey] = priorAlreadyCached
+              ? prev[priorKey]
+              : priorMeasurement;
+          }
+          return next;
+        });
+      } catch (err) {
+        if (!cancelled) {
+          setExpandError(
+            err instanceof Error ? err.message : "Unable to load week details.",
+          );
+        }
+      } finally {
+        if (!cancelled) setExpandLoading(null);
+      }
+    }
+
+    void fetchDetail();
+    return () => {
+      cancelled = true;
+    };
+    // detailCache intentionally omitted — we only fetch when missing for expandedWeekStart
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [expandedWeekStart, weeks]);
+
+  function toggleWeek(weekStart: string) {
+    setExpandedWeekStart((current) =>
+      current === weekStart ? null : weekStart,
+    );
+  }
+
+  if (loading) {
+    return (
+      <div className="flex flex-1 items-center justify-center px-6 py-10">
+        <HeartLoader size={192} />
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-1 flex-col gap-4 px-5 py-6 md:mx-auto md:w-full md:max-w-3xl md:px-10 md:py-10">
@@ -55,57 +229,79 @@ export default function HistoryPage() {
         came together.
       </p>
 
+      {loadError && (
+        <p className="text-xs text-brand-orange-dark">{loadError}</p>
+      )}
+
+      {!loadError && weeks.length === 0 && (
+        <p className="text-sm text-muted">
+          No weeks logged yet. Your history will show up here as you fill in
+          your plan, tracker, and measurements.
+        </p>
+      )}
+
       <div className="flex flex-col gap-2.5">
-        {WEEKS.map((week, i) => {
-          const expanded = expandedIndex === i;
+        {weeks.map((week) => {
+          const expanded = expandedWeekStart === week.week_start;
           const status = computeStatus(week);
           const statusStyle = STATUS_STYLES[status.key];
+          const detail = detailCache[week.week_start];
+          const isExpandLoading = expandLoading === week.week_start;
+
+          const trackerDays = countTrackerDaysLogged(detail?.tracker ?? null);
 
           const sections = [
             {
               key: "food",
               title: "Food Plan",
-              summary: week.foodPlanDone ? "All meals filled in for the week" : "Not fully filled in",
+              summary: week.has_base_plan
+                ? "All meals filled in for the week"
+                : "Not filled in yet",
               icon: <PlanIcon className="h-3.5 w-3.5 text-white" />,
             },
             {
               key: "tracker",
               title: "Success Tracker",
-              summary: `${week.trackerDays} of ${week.trackerTotal} days logged`,
+              summary: `${trackerDays} of 7 days logged`,
               icon: <ClipboardCheckIcon className="h-3.5 w-3.5 text-white" />,
             },
             {
               key: "measurements",
               title: "Weight & Measurements",
-              summary: week.measurementsLogged
-                ? week.weightChange != null
-                  ? `Logged · ${week.weightChange > 0 ? "+" : ""}${week.weightChange} since last week`
-                  : "Logged this week"
-                : "No entry this week",
+              summary: measurementSummary(
+                week,
+                detail,
+                weeks,
+                measurementByWeek,
+              ),
               icon: <RulerIcon className="h-3.5 w-3.5 text-white" />,
             },
           ];
 
           return (
             <div
-              key={week.label}
+              key={week.week_start}
               className="overflow-hidden rounded-[18px] border border-border bg-card shadow-[0_10px_22px_-16px_rgba(17,17,17,0.16)]"
             >
               <button
                 type="button"
-                onClick={() => setExpandedIndex(expanded ? -1 : i)}
+                onClick={() => toggleWeek(week.week_start)}
                 className="flex w-full cursor-pointer items-center gap-3 px-[18px] py-4 text-left"
               >
                 <span
                   className="flex h-[34px] w-[34px] shrink-0 items-center justify-center rounded-full"
-                  style={{ background: expanded ? "var(--brand-gradient)" : "var(--tip-bg)" }}
+                  style={{
+                    background: expanded
+                      ? "var(--brand-gradient)"
+                      : "var(--tip-bg)",
+                  }}
                 >
                   <RulerIcon
                     className={`h-3.5 w-3.5 ${expanded ? "text-white" : "text-tip-text"}`}
                   />
                 </span>
                 <span className="min-w-0 flex-1 truncate font-heading text-[15px] uppercase tracking-wide text-foreground">
-                  {week.label}
+                  {formatWeekRange(week.week_start)}
                 </span>
                 <span
                   className="flex shrink-0 items-center gap-1.5 rounded-full px-[11px] py-[5px]"
@@ -115,7 +311,10 @@ export default function HistoryPage() {
                     className="h-1.5 w-1.5 rounded-full"
                     style={{ background: statusStyle.dot }}
                   />
-                  <span className="text-[11px] font-bold tracking-wide" style={{ color: statusStyle.color }}>
+                  <span
+                    className="text-[11px] font-bold tracking-wide"
+                    style={{ color: statusStyle.color }}
+                  >
                     {status.label}
                   </span>
                 </span>
@@ -127,29 +326,37 @@ export default function HistoryPage() {
               {expanded && (
                 <div className="px-[18px] pb-5">
                   <div className="mb-4 h-px bg-border" />
-                  <div className="flex flex-col gap-2.5">
-                    {sections.map((section) => (
-                      <div
-                        key={section.key}
-                        className="flex items-center gap-3 rounded-[14px] border border-border bg-background px-4 py-3.5"
-                      >
-                        <span className="flex h-[30px] w-[30px] shrink-0 items-center justify-center rounded-full bg-brand-gradient">
-                          {section.icon}
-                        </span>
-                        <div className="min-w-0 flex-1">
-                          <p className="text-[12.5px] font-bold text-foreground">
-                            {section.title}
-                          </p>
-                          <p className="mt-0.5 text-xs font-medium text-muted">
-                            {section.summary}
-                          </p>
+                  {isExpandLoading || (!detail && !expandError) ? (
+                    <p className="text-xs font-medium text-muted">
+                      Loading week details…
+                    </p>
+                  ) : expandError && !detail ? (
+                    <p className="text-xs text-brand-orange-dark">{expandError}</p>
+                  ) : detail ? (
+                    <div className="flex flex-col gap-2.5">
+                      {sections.map((section) => (
+                        <div
+                          key={section.key}
+                          className="flex items-center gap-3 rounded-[14px] border border-border bg-background px-4 py-3.5"
+                        >
+                          <span className="flex h-[30px] w-[30px] shrink-0 items-center justify-center rounded-full bg-brand-gradient">
+                            {section.icon}
+                          </span>
+                          <div className="min-w-0 flex-1">
+                            <p className="text-[12.5px] font-bold text-foreground">
+                              {section.title}
+                            </p>
+                            <p className="mt-0.5 text-xs font-medium text-muted">
+                              {section.summary}
+                            </p>
+                          </div>
+                          <span className="whitespace-nowrap text-xs font-bold text-brand-orange-dark">
+                            View →
+                          </span>
                         </div>
-                        <span className="whitespace-nowrap text-xs font-bold text-brand-orange-dark">
-                          View →
-                        </span>
-                      </div>
-                    ))}
-                  </div>
+                      ))}
+                    </div>
+                  ) : null}
                 </div>
               )}
             </div>

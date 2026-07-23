@@ -4,9 +4,9 @@
  * GET/PUT for a member's weight_measurements row.
  *
  * Uses the caller's JWT only (no service_role). RLS policies still apply.
- * user_id is always derived server-side from the authenticated token —
- * never trusted from the request body, so a member cannot write another
- * member's row even if RLS were misconfigured.
+ * PUT always writes user_id from the authenticated token. GET may pass an
+ * optional user_id query param for coach/admin Coach Review reads; members
+ * requesting another user's id receive 403.
  */
 
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
@@ -20,6 +20,8 @@ const corsHeaders = {
 };
 
 const WEEK_START_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+const UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 function jsonResponse(body: Record<string, unknown>, status: number): Response {
   return new Response(JSON.stringify(body), {
@@ -35,6 +37,10 @@ function requiredEnv(name: string): string | null {
 
 function isValidWeekStart(value: unknown): value is string {
   return typeof value === "string" && WEEK_START_PATTERN.test(value);
+}
+
+function isUuid(value: string): boolean {
+  return UUID_PATTERN.test(value);
 }
 
 /** Returns an error message if invalid, otherwise null. */
@@ -97,7 +103,8 @@ Deno.serve(async (req: Request) => {
   }
 
   if (req.method === "GET") {
-    const weekStart = new URL(req.url).searchParams.get("week_start");
+    const url = new URL(req.url);
+    const weekStart = url.searchParams.get("week_start");
     if (!isValidWeekStart(weekStart)) {
       return jsonResponse(
         {
@@ -108,10 +115,35 @@ Deno.serve(async (req: Request) => {
       );
     }
 
+    let subjectId = user.id;
+    const requestedUserId = url.searchParams.get("user_id");
+    if (requestedUserId && requestedUserId !== user.id) {
+      if (!isUuid(requestedUserId)) {
+        return jsonResponse({ error: "user_id must be a valid UUID" }, 400);
+      }
+
+      const { data: callerProfile, error: callerProfileError } =
+        await callerClient
+          .from("profiles")
+          .select("role")
+          .eq("id", user.id)
+          .maybeSingle();
+
+      if (
+        callerProfileError ||
+        !callerProfile ||
+        (callerProfile.role !== "admin" && callerProfile.role !== "coach")
+      ) {
+        return jsonResponse({ error: "Forbidden" }, 403);
+      }
+
+      subjectId = requestedUserId;
+    }
+
     const { data, error: selectError } = await callerClient
       .from("weight_measurements")
       .select("*")
-      .eq("user_id", user.id)
+      .eq("user_id", subjectId)
       .eq("week_start", weekStart)
       .maybeSingle();
 
