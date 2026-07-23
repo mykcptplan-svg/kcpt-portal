@@ -51,8 +51,8 @@ function validateHabits(habits: unknown): string | null {
 
     const habit = item as Record<string, unknown>;
 
-    if (typeof habit.name !== "string" || habit.name.trim().length < 1) {
-      return `habits[${i}].name must be a non-empty string`;
+    if (typeof habit.name !== "string") {
+      return `habits[${i}].name must be a string`;
     }
 
     if (
@@ -61,6 +61,55 @@ function validateHabits(habits: unknown): string | null {
       !habit.days.every((d) => typeof d === "boolean")
     ) {
       return `habits[${i}].days must be an array of exactly 7 booleans`;
+    }
+  }
+
+  return null;
+}
+
+const DAILY_METRIC_KEYS = ["calories", "protein", "steps", "water"] as const;
+const DAILY_METRIC_CEILINGS: Record<(typeof DAILY_METRIC_KEYS)[number], number> =
+  {
+    calories: 10000,
+    protein: 500,
+    steps: 100000,
+    water: 5000,
+  };
+
+/** Returns an error message if invalid, otherwise null. */
+function validateDailyMetrics(metrics: unknown): string | null {
+  if (metrics === null || typeof metrics !== "object" || Array.isArray(metrics)) {
+    return "daily_metrics must be an object";
+  }
+
+  const obj = metrics as Record<string, unknown>;
+  const keys = Object.keys(obj);
+
+  if (
+    keys.length !== DAILY_METRIC_KEYS.length ||
+    !DAILY_METRIC_KEYS.every((key) => keys.includes(key))
+  ) {
+    return "daily_metrics must have exactly keys: calories, protein, steps, water";
+  }
+
+  for (const key of DAILY_METRIC_KEYS) {
+    const values = obj[key];
+    if (!Array.isArray(values) || values.length !== 7) {
+      return `daily_metrics.${key} must be an array of exactly 7 numbers or null`;
+    }
+
+    const ceiling = DAILY_METRIC_CEILINGS[key];
+    for (let i = 0; i < values.length; i++) {
+      const cell = values[i];
+      if (cell === null) continue;
+      if (
+        typeof cell !== "number" ||
+        !Number.isFinite(cell) ||
+        cell < 0 ||
+        cell > ceiling
+      ) {
+        return `daily_metrics.${key}[${i}] must be null or a number between 0 and ${ceiling}`;
+      }
     }
   }
 
@@ -161,6 +210,11 @@ Deno.serve(async (req: Request) => {
     return jsonResponse({ error: habitsError }, 400);
   }
 
+  const dailyMetricsError = validateDailyMetrics(record.daily_metrics);
+  if (dailyMetricsError) {
+    return jsonResponse({ error: dailyMetricsError }, 400);
+  }
+
   if (typeof record.sunday_reset_done !== "boolean") {
     return jsonResponse(
       { error: "sunday_reset_done must be a boolean" },
@@ -170,6 +224,7 @@ Deno.serve(async (req: Request) => {
 
   const week_start = record.week_start;
   const habits = record.habits;
+  const daily_metrics = record.daily_metrics;
   const sunday_reset_done = record.sunday_reset_done;
 
   const { error: upsertError } = await callerClient
@@ -179,6 +234,7 @@ Deno.serve(async (req: Request) => {
         user_id: user.id,
         week_start,
         habits,
+        daily_metrics,
         sunday_reset_done,
       },
       { onConflict: "user_id,week_start" },

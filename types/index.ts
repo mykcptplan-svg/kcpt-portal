@@ -29,10 +29,19 @@ export type HabitDayStatus = {
   days: boolean[]; // 7 elements: Monday through Sunday
 };
 
+/** Daily numeric metrics; each array is length 7: Mon…Sun (null = unset) */
+export type DailyMetrics = {
+  calories: (number | null)[];
+  protein: (number | null)[];
+  steps: (number | null)[];
+  water: (number | null)[];
+};
+
 export type WeeklyTrackerEntry = {
   user_id: string;
   week_start: string;
   habits: HabitDayStatus[];
+  daily_metrics: DailyMetrics;
   sunday_reset_done: boolean;
 };
 

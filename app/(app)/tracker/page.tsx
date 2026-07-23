@@ -8,16 +8,55 @@ import {
   CheckIcon,
   ClipboardCheckIcon,
   RefreshIcon,
+  RulerIcon,
 } from "@/components/icons";
 import { getWeeklyTracker, saveWeeklyTracker } from "@/lib/api/tracker";
 import { useDebouncedSave } from "@/lib/hooks/useDebouncedSave";
 import { createClient } from "@/lib/supabase/client";
 import { getWeekStart } from "@/lib/week";
+import type { DailyMetrics } from "@/types";
 
 const DAY_LABELS = ["M", "T", "W", "T", "F", "S", "S"];
 
+const METRIC_ROWS: {
+  key: keyof DailyMetrics;
+  label: string;
+}[] = [
+  { key: "calories", label: "Calories (kcal)" },
+  { key: "protein", label: "Protein (g)" },
+  { key: "steps", label: "Steps" },
+  { key: "water", label: "Water (oz)" },
+];
+
 function emptyChecks(): boolean[][] {
   return Array.from({ length: 3 }, () => Array(7).fill(false) as boolean[]);
+}
+
+function emptyMetrics(): DailyMetrics {
+  return {
+    calories: Array(7).fill(null) as (number | null)[],
+    protein: Array(7).fill(null) as (number | null)[],
+    steps: Array(7).fill(null) as (number | null)[],
+    water: Array(7).fill(null) as (number | null)[],
+  };
+}
+
+function normalizeDailyMetrics(raw: unknown): DailyMetrics {
+  const fallback = emptyMetrics();
+  if (raw === null || typeof raw !== "object" || Array.isArray(raw)) {
+    return fallback;
+  }
+  const obj = raw as Record<string, unknown>;
+  for (const { key } of METRIC_ROWS) {
+    const arr = obj[key];
+    if (!Array.isArray(arr) || arr.length !== 7) return fallback;
+  }
+  return {
+    calories: (obj.calories as (number | null)[]).slice(0, 7),
+    protein: (obj.protein as (number | null)[]).slice(0, 7),
+    steps: (obj.steps as (number | null)[]).slice(0, 7),
+    water: (obj.water as (number | null)[]).slice(0, 7),
+  };
 }
 
 export default function TrackerPage() {
@@ -26,6 +65,7 @@ export default function TrackerPage() {
 
   const [habitNames, setHabitNames] = useState<string[]>(["", "", ""]);
   const [checks, setChecks] = useState<boolean[][]>(emptyChecks);
+  const [dailyMetrics, setDailyMetrics] = useState<DailyMetrics>(emptyMetrics);
   const [wentWell, setWentWell] = useState("");
   const [adjustNext, setAdjustNext] = useState("");
   const [loading, setLoading] = useState(true);
@@ -56,6 +96,7 @@ export default function TrackerPage() {
             (i) => habits[i]?.days?.slice() ?? (Array(7).fill(false) as boolean[]),
           ),
         );
+        setDailyMetrics(normalizeDailyMetrics(tracker.daily_metrics));
         if (tracker.sunday_reset_done) {
           // Text isn't persisted (no backing column) — the boolean flag is
           // the only signal we get back, so surface it as a placeholder.
@@ -84,9 +125,26 @@ export default function TrackerPage() {
     });
   }
 
+  function setMetricCell(
+    key: keyof DailyMetrics,
+    dayIdx: number,
+    raw: string,
+  ) {
+    setDailyMetrics((prev) => {
+      const nextRow = prev[key].slice();
+      if (raw.trim() === "") {
+        nextRow[dayIdx] = null;
+      } else {
+        const n = Number(raw);
+        nextRow[dayIdx] = Number.isFinite(n) ? n : null;
+      }
+      return { ...prev, [key]: nextRow };
+    });
+  }
+
   const draft = useMemo(
-    () => ({ checks, habitNames, wentWell, adjustNext }),
-    [checks, habitNames, wentWell, adjustNext],
+    () => ({ checks, habitNames, dailyMetrics, wentWell, adjustNext }),
+    [checks, habitNames, dailyMetrics, wentWell, adjustNext],
   );
 
   const { status, error: saveError } = useDebouncedSave(
@@ -101,6 +159,7 @@ export default function TrackerPage() {
             name,
             days: value.checks[i],
           })),
+          daily_metrics: value.dailyMetrics,
           sunday_reset_done: Boolean(value.wentWell.trim() || value.adjustNext.trim()),
         },
         accessToken,
@@ -155,6 +214,51 @@ export default function TrackerPage() {
               maxLength={40}
               className="w-full rounded-[10px] border border-border bg-background px-3 py-2 text-[13.5px] text-foreground outline-none focus:border-brand-orange"
             />
+          ))}
+        </div>
+      </section>
+
+      {/* Daily Numbers */}
+      <section className="rounded-[20px] border border-border bg-card px-4 py-5 shadow-[0_12px_26px_-18px_rgba(17,17,17,0.16)]">
+        <div className="mb-4 flex items-center gap-3 px-1">
+          <span className="flex h-[38px] w-[38px] shrink-0 items-center justify-center rounded-full bg-brand-gradient text-white">
+            <RulerIcon className="h-4 w-4" />
+          </span>
+          <h2 className="font-heading text-base uppercase tracking-wide text-foreground">
+            Daily Numbers
+          </h2>
+        </div>
+
+        <div className="grid grid-cols-[minmax(100px,1.4fr)_repeat(7,minmax(0,1fr))] items-center gap-x-0.5 gap-y-1.5">
+          <div />
+          {DAY_LABELS.map((d, i) => (
+            <div
+              key={`metric-day-${d}-${i}`}
+              className="text-center text-[10.5px] font-extrabold tracking-wide text-muted"
+            >
+              {d}
+            </div>
+          ))}
+
+          {METRIC_ROWS.map(({ key, label }) => (
+            <Fragment key={key}>
+              <div className="pr-1.5 text-xs font-bold leading-tight text-foreground">
+                {label}
+              </div>
+              {dailyMetrics[key].map((value, dayIdx) => (
+                <div key={`${key}-${dayIdx}`} className="flex justify-center">
+                  <input
+                    type="number"
+                    inputMode="numeric"
+                    min={0}
+                    value={value ?? ""}
+                    onChange={(e) => setMetricCell(key, dayIdx, e.target.value)}
+                    aria-label={`${label} — ${DAY_LABELS[dayIdx]}`}
+                    className="h-[28px] w-full min-w-0 max-w-[44px] rounded-lg border border-border bg-background px-0.5 text-center text-[11px] text-foreground outline-none focus:border-brand-orange [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                  />
+                </div>
+              ))}
+            </Fragment>
           ))}
         </div>
       </section>
