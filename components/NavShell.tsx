@@ -185,7 +185,7 @@ export default function NavShell({ children }: { children: ReactNode }) {
         className="fixed inset-x-0 bottom-0 z-50 flex justify-center px-4 pb-4 md:hidden"
         aria-label="Main"
       >
-        <div className="flex w-full max-w-[420px] gap-1 rounded-[20px] border border-border bg-white/92 p-2 shadow-[0_20px_40px_-16px_rgba(17,17,17,0.22)] backdrop-blur-md">
+        <div className="flex w-full max-w-[420px] gap-1 rounded-[20px] border border-border bg-card/92 p-2 shadow-[0_20px_40px_-16px_rgba(17,17,17,0.22)] backdrop-blur-md">
           {baseNavItems.map((item) => {
             const active = isActive(item.href);
             return (
