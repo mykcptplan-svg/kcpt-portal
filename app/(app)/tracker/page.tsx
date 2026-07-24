@@ -97,11 +97,8 @@ export default function TrackerPage() {
           ),
         );
         setDailyMetrics(normalizeDailyMetrics(tracker.daily_metrics));
-        if (tracker.sunday_reset_done) {
-          // Text isn't persisted (no backing column) — the boolean flag is
-          // the only signal we get back, so surface it as a placeholder.
-          setWentWell((current) => current || "Reset completed for this week.");
-        }
+        setWentWell(tracker.went_well ?? "");
+        setAdjustNext(tracker.adjust_next ?? "");
       } catch (err) {
         if (!cancelled) {
           setLoadError(err instanceof Error ? err.message : "Unable to load tracker.");
@@ -160,7 +157,11 @@ export default function TrackerPage() {
             days: value.checks[i],
           })),
           daily_metrics: value.dailyMetrics,
-          sunday_reset_done: Boolean(value.wentWell.trim() || value.adjustNext.trim()),
+          sunday_reset_done: Boolean(
+            value.wentWell.trim() || value.adjustNext.trim(),
+          ),
+          went_well: value.wentWell.trim() || null,
+          adjust_next: value.adjustNext.trim() || null,
         },
         accessToken,
       );

@@ -43,6 +43,8 @@ export type WeeklyTrackerEntry = {
   habits: HabitDayStatus[];
   daily_metrics: DailyMetrics;
   sunday_reset_done: boolean;
+  went_well: string | null;
+  adjust_next: string | null;
 };
 
 export type WeightMeasurement = {

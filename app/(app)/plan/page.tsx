@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import MealSectionCard from "@/components/plan/MealSectionCard";
+import NutritionApproachToggle from "@/components/plan/NutritionApproachToggle";
 import AutosaveStatus from "@/components/AutosaveStatus";
 import HeartLoader from "@/components/HeartLoader";
 import {
@@ -127,6 +128,11 @@ export default function PlanPage() {
       </div>
 
       <AutosaveStatus status={status} />
+
+      <NutritionApproachToggle
+        value={nutritionApproach}
+        onChange={setNutritionApproach}
+      />
 
       <div className="grid gap-4 sm:grid-cols-2">
         <MealSectionCard

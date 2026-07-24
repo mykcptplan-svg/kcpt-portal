@@ -122,6 +122,25 @@ function validateDailyMetrics(metrics: unknown): string | null {
   return null;
 }
 
+const RESET_TEXT_MAX = 2000;
+
+/** Absent or null -> null. Present non-string or over-length -> error. */
+function parseOptionalResetText(
+  value: unknown,
+  field: "went_well" | "adjust_next",
+): { error: string } | { value: string | null } {
+  if (value === undefined || value === null) {
+    return { value: null };
+  }
+  if (typeof value !== "string") {
+    return { error: `${field} must be a string` };
+  }
+  if (value.length > RESET_TEXT_MAX) {
+    return { error: `${field} must be at most ${RESET_TEXT_MAX} characters` };
+  }
+  return { value };
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -254,10 +273,25 @@ Deno.serve(async (req: Request) => {
     );
   }
 
+  const wentWellParsed = parseOptionalResetText(record.went_well, "went_well");
+  if ("error" in wentWellParsed) {
+    return jsonResponse({ error: wentWellParsed.error }, 400);
+  }
+
+  const adjustNextParsed = parseOptionalResetText(
+    record.adjust_next,
+    "adjust_next",
+  );
+  if ("error" in adjustNextParsed) {
+    return jsonResponse({ error: adjustNextParsed.error }, 400);
+  }
+
   const week_start = record.week_start;
   const habits = record.habits;
   const daily_metrics = record.daily_metrics;
   const sunday_reset_done = record.sunday_reset_done;
+  const went_well = wentWellParsed.value;
+  const adjust_next = adjustNextParsed.value;
 
   const { error: upsertError } = await callerClient
     .from("weekly_tracker_entries")
@@ -268,6 +302,8 @@ Deno.serve(async (req: Request) => {
         habits,
         daily_metrics,
         sunday_reset_done,
+        went_well,
+        adjust_next,
       },
       { onConflict: "user_id,week_start" },
     );

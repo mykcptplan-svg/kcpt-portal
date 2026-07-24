@@ -12,7 +12,13 @@
  *   if (!session) throw new Error("Not logged in");
  *   const entry = await getWeeklyTracker("2026-07-20", session.access_token);
  *   await saveWeeklyTracker(
- *     { week_start: "2026-07-20", habits: [...], sunday_reset_done: false },
+ *     {
+ *       week_start: "2026-07-20",
+ *       habits: [...],
+ *       sunday_reset_done: false,
+ *       went_well: null,
+ *       adjust_next: null,
+ *     },
  *     session.access_token,
  *   );
  *
