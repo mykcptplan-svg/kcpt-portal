@@ -335,18 +335,18 @@ export default function MeasurementsPage() {
         <div className="grid grid-cols-2 gap-3">
           {(
             [
-              { key: "stone", label: "Stone", placeholder: "e.g. 12" },
-              { key: "lbs", label: "Lbs", placeholder: "e.g. 6" },
-              { key: "waist", label: "Waist", placeholder: "e.g. 36.5" },
-              { key: "hips", label: "Hips", placeholder: "e.g. 40" },
-              { key: "chest", label: "Chest", placeholder: "e.g. 43.5" },
+              { key: "stone", label: "Stone", placeholder: "e.g. 12", unit: "st" },
+              { key: "lbs", label: "Lbs", placeholder: "e.g. 6", unit: "lbs" },
+              { key: "waist", label: "Waist", placeholder: "e.g. 36.5", unit: "in" },
+              { key: "hips", label: "Hips", placeholder: "e.g. 40", unit: "in" },
+              { key: "chest", label: "Chest", placeholder: "e.g. 43.5", unit: "in" },
             ] as const
-          ).map((field) => (
-            <div key={field.key}>
-              <p className="mb-2 text-[11px] font-bold uppercase tracking-wide text-muted">
-                {field.label}
-              </p>
-              {showForm ? (
+          ).map((field) =>
+            showForm ? (
+              <div key={field.key}>
+                <p className="mb-2 text-[11px] font-bold uppercase tracking-wide text-muted">
+                  {field.label}
+                </p>
                 <input
                   type="number"
                   inputMode="decimal"
@@ -355,13 +355,28 @@ export default function MeasurementsPage() {
                   placeholder={field.placeholder}
                   className="w-full rounded-[10px] border border-border bg-background px-[13px] py-3 text-[14px] font-semibold text-foreground outline-none focus:border-brand-orange"
                 />
-              ) : (
-                <p className="rounded-[10px] border border-transparent px-[13px] py-3 text-[14px] font-semibold text-foreground">
-                  {form[field.key].trim() !== "" ? form[field.key] : "—"}
+              </div>
+            ) : (
+              <div
+                key={field.key}
+                className="w-full rounded-[14px] border border-border bg-background px-[13px] py-3"
+              >
+                <p className="mb-1 text-[11px] font-bold uppercase tracking-wide text-muted">
+                  {field.label}
                 </p>
-              )}
-            </div>
-          ))}
+                {form[field.key].trim() !== "" ? (
+                  <p className="text-[16px] font-bold text-foreground">
+                    {form[field.key]}{" "}
+                    <span className="text-[12px] font-semibold text-muted">
+                      {field.unit}
+                    </span>
+                  </p>
+                ) : (
+                  <p className="text-[16px] font-bold text-foreground">—</p>
+                )}
+              </div>
+            ),
+          )}
         </div>
       </section>
 
