@@ -113,6 +113,8 @@ export default function MeasurementsPage() {
   const [entries, setEntries] = useState<Entry[]>([]);
   const [activeMetric, setActiveMetric] = useState<MetricKey>("weight");
   const [form, setForm] = useState<FormState>(emptyForm);
+  const [hasSavedEntry, setHasSavedEntry] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const accessTokenRef = useRef<string | null>(null);
@@ -151,6 +153,7 @@ export default function MeasurementsPage() {
 
         setEntries(historyEntries);
         setForm(formFromEntry(currentRow ? entryFromRow(currentRow) : null));
+        if (currentRow) setHasSavedEntry(true);
       } catch (err) {
         if (!cancelled) {
           setLoadError(
@@ -223,9 +226,12 @@ export default function MeasurementsPage() {
         next[idx] = saved;
         return next;
       });
+      setHasSavedEntry(true);
     },
     { skip: loading },
   );
+
+  const showForm = !hasSavedEntry || isEditing;
 
   const chart = useMemo(() => {
     if (entries.length === 0) {
@@ -296,84 +302,66 @@ export default function MeasurementsPage() {
 
       <AutosaveStatus status={status} />
 
-      {/* Log New Entry — this week only */}
+      {/* This week's entry — log or read-only */}
       <section className="rounded-[20px] border border-border bg-card p-5 shadow-[0_12px_26px_-18px_rgba(17,17,17,0.16)]">
         <div className="mb-4 flex items-center gap-3">
           <span className="flex h-[38px] w-[38px] shrink-0 items-center justify-center rounded-full bg-brand-gradient text-white">
             <RulerIcon className="h-4 w-4" />
           </span>
-          <h2 className="font-heading text-base uppercase tracking-wide text-foreground">
-            Log New Entry
-          </h2>
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-3">
+              <h2 className="font-heading text-base uppercase tracking-wide text-foreground">
+                {hasSavedEntry ? "This Week's Entry" : "Log New Entry"}
+              </h2>
+              {hasSavedEntry && !isEditing && (
+                <button
+                  type="button"
+                  onClick={() => setIsEditing(true)}
+                  className="cursor-pointer rounded-full border border-border bg-card px-3 py-1 text-[12px] font-bold text-muted transition-colors hover:text-foreground"
+                >
+                  Edit
+                </button>
+              )}
+            </div>
+            {hasSavedEntry && !isEditing && (
+              <p className="mt-1 text-[12px] text-muted">
+                Only edit if you made a mistake — this won&apos;t create a new
+                entry.
+              </p>
+            )}
+          </div>
         </div>
 
         <div className="grid grid-cols-2 gap-3">
-          <div>
-            <p className="mb-2 text-[11px] font-bold uppercase tracking-wide text-muted">
-              Stone
-            </p>
-            <input
-              type="number"
-              inputMode="decimal"
-              value={form.stone}
-              onChange={(e) => setFormField("stone", e.target.value)}
-              placeholder="e.g. 12"
-              className="w-full rounded-[10px] border border-border bg-background px-[13px] py-3 text-[14px] font-semibold text-foreground outline-none focus:border-brand-orange"
-            />
-          </div>
-          <div>
-            <p className="mb-2 text-[11px] font-bold uppercase tracking-wide text-muted">
-              Lbs
-            </p>
-            <input
-              type="number"
-              inputMode="decimal"
-              value={form.lbs}
-              onChange={(e) => setFormField("lbs", e.target.value)}
-              placeholder="e.g. 6"
-              className="w-full rounded-[10px] border border-border bg-background px-[13px] py-3 text-[14px] font-semibold text-foreground outline-none focus:border-brand-orange"
-            />
-          </div>
-
-          <div>
-            <p className="mb-2 text-[11px] font-bold uppercase tracking-wide text-muted">
-              Waist
-            </p>
-            <input
-              type="number"
-              inputMode="decimal"
-              value={form.waist}
-              onChange={(e) => setFormField("waist", e.target.value)}
-              placeholder="e.g. 36.5"
-              className="w-full rounded-[10px] border border-border bg-background px-[13px] py-3 text-[14px] font-semibold text-foreground outline-none focus:border-brand-orange"
-            />
-          </div>
-          <div>
-            <p className="mb-2 text-[11px] font-bold uppercase tracking-wide text-muted">
-              Hips
-            </p>
-            <input
-              type="number"
-              inputMode="decimal"
-              value={form.hips}
-              onChange={(e) => setFormField("hips", e.target.value)}
-              placeholder="e.g. 40"
-              className="w-full rounded-[10px] border border-border bg-background px-[13px] py-3 text-[14px] font-semibold text-foreground outline-none focus:border-brand-orange"
-            />
-          </div>
-          <div>
-            <p className="mb-2 text-[11px] font-bold uppercase tracking-wide text-muted">
-              Chest
-            </p>
-            <input
-              type="number"
-              inputMode="decimal"
-              value={form.chest}
-              onChange={(e) => setFormField("chest", e.target.value)}
-              placeholder="e.g. 43.5"
-              className="w-full rounded-[10px] border border-border bg-background px-[13px] py-3 text-[14px] font-semibold text-foreground outline-none focus:border-brand-orange"
-            />
-          </div>
+          {(
+            [
+              { key: "stone", label: "Stone", placeholder: "e.g. 12" },
+              { key: "lbs", label: "Lbs", placeholder: "e.g. 6" },
+              { key: "waist", label: "Waist", placeholder: "e.g. 36.5" },
+              { key: "hips", label: "Hips", placeholder: "e.g. 40" },
+              { key: "chest", label: "Chest", placeholder: "e.g. 43.5" },
+            ] as const
+          ).map((field) => (
+            <div key={field.key}>
+              <p className="mb-2 text-[11px] font-bold uppercase tracking-wide text-muted">
+                {field.label}
+              </p>
+              {showForm ? (
+                <input
+                  type="number"
+                  inputMode="decimal"
+                  value={form[field.key]}
+                  onChange={(e) => setFormField(field.key, e.target.value)}
+                  placeholder={field.placeholder}
+                  className="w-full rounded-[10px] border border-border bg-background px-[13px] py-3 text-[14px] font-semibold text-foreground outline-none focus:border-brand-orange"
+                />
+              ) : (
+                <p className="rounded-[10px] border border-transparent px-[13px] py-3 text-[14px] font-semibold text-foreground">
+                  {form[field.key].trim() !== "" ? form[field.key] : "—"}
+                </p>
+              )}
+            </div>
+          ))}
         </div>
       </section>
 
