@@ -34,6 +34,8 @@
 .dark {
   --background: #15130f;
   --foreground: #f2ede6;
+  --muted: rgba(242, 237, 230, 0.55);
+  --border: rgba(255, 255, 255, 0.09);
 
   --card: #211d17;
   --card-border: rgba(255, 255, 255, 0.09);
