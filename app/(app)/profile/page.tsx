@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { LogOutIcon } from "@/components/icons";
 import { useProfile } from "@/lib/context/ProfileContext";
 import { createClient } from "@/lib/supabase/client";
+import { setStoredTheme } from "@/lib/theme";
 
 function initialsFromName(fullName: string): string {
   const parts = fullName.trim().split(/\s+/).filter(Boolean);
@@ -18,6 +19,15 @@ export default function ProfilePage() {
   const router = useRouter();
   const { profile, loading } = useProfile();
   const [signingOut, setSigningOut] = useState(false);
+  const [darkMode, setDarkMode] = useState(
+    () => typeof document !== "undefined" && document.documentElement.classList.contains("dark"),
+  );
+
+  function handleToggleDarkMode() {
+    const next = !darkMode;
+    setDarkMode(next);
+    setStoredTheme(next ? "dark" : "light");
+  }
 
   const fullName = profile?.full_name?.trim() ?? "";
   const email = profile?.email ?? null;
@@ -78,13 +88,21 @@ export default function ProfilePage() {
         <div className="flex items-center justify-between gap-3">
           <div>
             <p className="text-sm font-bold text-foreground">Dark Mode</p>
-            <p className="mt-0.5 text-[11.5px] font-semibold text-muted">
-              Coming soon
-            </p>
           </div>
-          <div className="relative h-[26px] w-11 shrink-0 cursor-not-allowed rounded-full bg-black/10 opacity-60">
-            <div className="absolute left-[3px] top-[3px] h-5 w-5 rounded-full bg-white shadow-[0_1px_3px_rgba(17,17,17,0.2)]" />
-          </div>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={darkMode}
+            aria-label="Toggle dark mode"
+            onClick={handleToggleDarkMode}
+            className="relative h-[26px] w-11 shrink-0 cursor-pointer rounded-full transition-colors"
+            style={{ background: darkMode ? "var(--brand-gradient)" : "rgba(17,17,17,0.12)" }}
+          >
+            <span
+              className="absolute top-[3px] h-5 w-5 rounded-full bg-white shadow-[0_1px_3px_rgba(17,17,17,0.2)] transition-[left]"
+              style={{ left: darkMode ? "21px" : "3px" }}
+            />
+          </button>
         </div>
       </div>
 

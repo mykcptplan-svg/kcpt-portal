@@ -26,6 +26,26 @@
   --badge-text: #b8681d;
 }
 
+/*
+  Dark theme — matches the "KCPT Dashboard Dark" Claude Design mockup.
+  Brand orange values are intentionally left unset here so they keep
+  inheriting from :root.
+*/
+.dark {
+  --background: #15130f;
+  --foreground: #f2ede6;
+
+  --card: #211d17;
+  --card-border: rgba(255, 255, 255, 0.09);
+
+  --tip-bg: rgba(251, 147, 58, 0.14);
+  --tip-border: rgba(251, 147, 58, 0.35);
+  --tip-text: #ffb870;
+
+  --badge-bg: rgba(251, 147, 58, 0.18);
+  --badge-text: #ffb870;
+}
+
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
