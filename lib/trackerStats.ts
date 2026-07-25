@@ -45,3 +45,10 @@ export function countNonNegotiablesHit(
     0,
   );
 }
+
+/** Average of the non-null entries in a 7-day metric series, or null if none are logged. */
+export function averageDailyMetric(values: (number | null)[]): number | null {
+  const present = values.filter((v): v is number => v != null);
+  if (present.length === 0) return null;
+  return present.reduce((sum, v) => sum + v, 0) / present.length;
+}

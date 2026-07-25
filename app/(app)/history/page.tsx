@@ -1,7 +1,10 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import HeartLoader from "@/components/HeartLoader";
+import SectionDetail, {
+  type HistorySectionKey,
+} from "@/components/history/SectionDetail";
 import {
   ChevronDownIcon,
   ClipboardCheckIcon,
@@ -90,6 +93,7 @@ export default function HistoryPage() {
   measurementByWeekRef.current = measurementByWeek;
   const [expandLoading, setExpandLoading] = useState<string | null>(null);
   const [expandError, setExpandError] = useState<string | null>(null);
+  const [openSections, setOpenSections] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     let cancelled = false;
@@ -206,6 +210,19 @@ export default function HistoryPage() {
     );
   }
 
+  function toggleSectionDetail(weekStart: string, key: HistorySectionKey) {
+    const id = `${weekStart}:${key}`;
+    setOpenSections((current) => {
+      const next = new Set(current);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  }
+
   if (loading) {
     return (
       <div className="flex flex-1 items-center justify-center px-6 py-10">
@@ -250,7 +267,12 @@ export default function HistoryPage() {
 
           const trackerDays = countTrackerDaysLogged(detail?.tracker ?? null);
 
-          const sections = [
+          const sections: {
+            key: HistorySectionKey;
+            title: string;
+            summary: string;
+            icon: ReactNode;
+          }[] = [
             {
               key: "food",
               title: "Food Plan",
@@ -334,27 +356,52 @@ export default function HistoryPage() {
                     <p className="text-xs text-brand-orange-dark">{expandError}</p>
                   ) : detail ? (
                     <div className="flex flex-col gap-2.5">
-                      {sections.map((section) => (
-                        <div
-                          key={section.key}
-                          className="flex items-center gap-3 rounded-[14px] border border-border bg-background px-4 py-3.5"
-                        >
-                          <span className="flex h-[30px] w-[30px] shrink-0 items-center justify-center rounded-full bg-brand-gradient">
-                            {section.icon}
-                          </span>
-                          <div className="min-w-0 flex-1">
-                            <p className="text-[12.5px] font-bold text-foreground">
-                              {section.title}
-                            </p>
-                            <p className="mt-0.5 text-xs font-medium text-muted">
-                              {section.summary}
-                            </p>
+                      {sections.map((section) => {
+                        const isSectionOpen = openSections.has(
+                          `${week.week_start}:${section.key}`,
+                        );
+                        return (
+                          <div key={section.key}>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                toggleSectionDetail(
+                                  week.week_start,
+                                  section.key,
+                                )
+                              }
+                              aria-expanded={isSectionOpen}
+                              className="flex w-full cursor-pointer items-center gap-3 rounded-[14px] border border-border bg-background px-4 py-3.5 text-left"
+                            >
+                              <span className="flex h-[30px] w-[30px] shrink-0 items-center justify-center rounded-full bg-brand-gradient">
+                                {section.icon}
+                              </span>
+                              <div className="min-w-0 flex-1">
+                                <p className="text-[12.5px] font-bold text-foreground">
+                                  {section.title}
+                                </p>
+                                <p className="mt-0.5 text-xs font-medium text-muted">
+                                  {section.summary}
+                                </p>
+                              </div>
+                              <span className="whitespace-nowrap text-xs font-bold text-brand-orange-dark">
+                                {isSectionOpen ? "Hide" : "View →"}
+                              </span>
+                            </button>
+
+                            {isSectionOpen && (
+                              <div className="mt-2 rounded-[14px] border border-border bg-card p-4">
+                                <SectionDetail
+                                  sectionKey={section.key}
+                                  plan={detail.plan}
+                                  tracker={detail.tracker}
+                                  measurement={detail.measurement}
+                                />
+                              </div>
+                            )}
                           </div>
-                          <span className="whitespace-nowrap text-xs font-bold text-brand-orange-dark">
-                            View →
-                          </span>
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   ) : null}
                 </div>
