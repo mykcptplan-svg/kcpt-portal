@@ -242,6 +242,15 @@ function MeasurementsDetail({
       <StatChip label="Waist" value={String(measurement.waist)} unit="in" />
       <StatChip label="Hips" value={String(measurement.hips)} unit="in" />
       <StatChip label="Chest" value={String(measurement.chest)} unit="in" />
+      {measurement.arm != null && (
+        <StatChip label="Arm" value={String(measurement.arm)} unit="in" />
+      )}
+      {measurement.thigh != null && (
+        <StatChip label="Thigh" value={String(measurement.thigh)} unit="in" />
+      )}
+      {measurement.calve != null && (
+        <StatChip label="Calve" value={String(measurement.calve)} unit="in" />
+      )}
     </div>
   );
 }
