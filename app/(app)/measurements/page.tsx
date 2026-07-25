@@ -200,7 +200,7 @@ export default function MeasurementsPage() {
         hips === null ||
         chest === null
       ) {
-        return;
+        return false;
       }
 
       await saveWeightMeasurement(
@@ -210,6 +210,9 @@ export default function MeasurementsPage() {
           waist,
           hips,
           chest,
+          arm: null,
+          thigh: null,
+          calve: null,
         },
         accessToken,
       );
@@ -450,7 +453,7 @@ export default function MeasurementsPage() {
                   x2={CHART_W}
                   y1={y}
                   y2={y}
-                  stroke="rgba(17,17,17,0.07)"
+                  stroke="var(--border)"
                   strokeWidth={1}
                 />
               ))}

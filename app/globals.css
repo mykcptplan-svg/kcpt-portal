@@ -24,6 +24,12 @@
 
   --badge-bg: #fdf1de;
   --badge-text: #b8681d;
+
+  --badge-neutral-bg: rgba(17, 17, 17, 0.06);
+  --badge-neutral-dot: rgba(17, 17, 17, 0.3);
+  --badge-neutral-text: rgba(26, 22, 19, 0.5);
+  --placeholder: rgba(26, 22, 19, 0.35);
+  --revoke-text: #8a2c1f;
 }
 
 /*
@@ -46,6 +52,12 @@
 
   --badge-bg: rgba(251, 147, 58, 0.18);
   --badge-text: #ffb870;
+
+  --badge-neutral-bg: rgba(255, 255, 255, 0.08);
+  --badge-neutral-dot: rgba(255, 255, 255, 0.35);
+  --badge-neutral-text: rgba(242, 237, 230, 0.5);
+  --placeholder: rgba(242, 237, 230, 0.35);
+  --revoke-text: #ff8a70;
 }
 
 @theme inline {
@@ -81,7 +93,7 @@ body {
 }
 
 input::placeholder {
-  color: rgba(26, 22, 19, 0.35);
+  color: var(--placeholder);
 }
 
 .bg-brand-gradient {
