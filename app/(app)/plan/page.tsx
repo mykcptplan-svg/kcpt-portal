@@ -15,6 +15,7 @@ import {
   TriggerSnackIcon,
 } from "@/components/icons";
 import { getWeeklyBasePlan, saveWeeklyBasePlan } from "@/lib/api/basePlan";
+import { useProfile } from "@/lib/context/ProfileContext";
 import { useDebouncedSave } from "@/lib/hooks/useDebouncedSave";
 import { createClient } from "@/lib/supabase/client";
 import { getWeekStart } from "@/lib/week";
@@ -24,6 +25,8 @@ import type { NutritionApproach } from "@/types/plan";
 export default function PlanPage() {
   const supabase = useMemo(() => createClient(), []);
   const weekStart = useMemo(() => getWeekStart(), []);
+  const { profile } = useProfile();
+  const isRevoked = profile?.status === "revoked";
 
   const [nutritionApproach, setNutritionApproach] =
     useState<NutritionApproach>("orange_base");
@@ -127,11 +130,27 @@ export default function PlanPage() {
         </p>
       </div>
 
+      {isRevoked && (
+        <div
+          className="rounded-lg border px-4 py-3 text-[14px] leading-snug"
+          style={{
+            background: "var(--tip-bg)",
+            borderColor: "var(--brand-orange-dark)",
+            color: "var(--brand-orange-dark)",
+          }}
+          role="status"
+        >
+          Your access has been paused. Please contact your coach for more
+          information.
+        </div>
+      )}
+
       <AutosaveStatus status={status} />
 
       <NutritionApproachToggle
         value={nutritionApproach}
         onChange={setNutritionApproach}
+        disabled={isRevoked}
       />
 
       <div className="grid gap-4 sm:grid-cols-2">
@@ -144,6 +163,7 @@ export default function PlanPage() {
           minRequired={2}
           maxItems={3}
           placeholder="e.g. Greek yogurt with berries"
+          disabled={isRevoked}
         />
 
         <MealSectionCard
@@ -155,6 +175,7 @@ export default function PlanPage() {
           minRequired={2}
           maxItems={3}
           placeholder="e.g. Grilled chicken salad"
+          disabled={isRevoked}
         />
 
         <MealSectionCard
@@ -166,6 +187,7 @@ export default function PlanPage() {
           minRequired={2}
           maxItems={3}
           placeholder="e.g. Chips"
+          disabled={isRevoked}
         />
 
         <MealSectionCard
@@ -177,6 +199,7 @@ export default function PlanPage() {
           minRequired={1}
           maxItems={2}
           placeholder="e.g. Dark chocolate square"
+          disabled={isRevoked}
         />
       </div>
 

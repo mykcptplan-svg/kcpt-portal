@@ -3,6 +3,7 @@ import type { NutritionApproach } from "@/types/plan";
 type NutritionApproachToggleProps = {
   value: NutritionApproach;
   onChange: (value: NutritionApproach) => void;
+  disabled?: boolean;
 };
 
 const options: { value: NutritionApproach; label: string }[] = [
@@ -13,11 +14,12 @@ const options: { value: NutritionApproach; label: string }[] = [
 export default function NutritionApproachToggle({
   value,
   onChange,
+  disabled = false,
 }: NutritionApproachToggleProps) {
   const groupId = "nutrition-approach";
 
   return (
-    <fieldset className="flex flex-col gap-2 border-0 p-0">
+    <fieldset className="flex flex-col gap-2 border-0 p-0" disabled={disabled}>
       <legend
         id={`${groupId}-label`}
         className="text-xs font-semibold uppercase tracking-wide text-muted"
@@ -40,11 +42,16 @@ export default function NutritionApproachToggle({
               type="button"
               role="radio"
               aria-checked={selected}
-              onClick={() => onChange(option.value)}
-              className={`flex-1 rounded-xl px-3 py-2.5 text-sm font-semibold transition-all ${
+              disabled={disabled}
+              onClick={() => {
+                if (!disabled) onChange(option.value);
+              }}
+              className={`flex-1 rounded-xl px-3 py-2.5 text-sm font-semibold transition-all disabled:cursor-not-allowed disabled:opacity-60 ${
                 selected
                   ? "bg-brand-gradient text-white shadow-[0_6px_14px_-6px_rgba(236,74,49,0.5)]"
-                  : "text-muted hover:text-foreground"
+                  : disabled
+                    ? "text-muted"
+                    : "cursor-pointer text-muted hover:text-foreground"
               }`}
             >
               {option.label}

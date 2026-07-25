@@ -11,6 +11,7 @@ import {
   RulerIcon,
 } from "@/components/icons";
 import { getWeeklyTracker, saveWeeklyTracker } from "@/lib/api/tracker";
+import { useProfile } from "@/lib/context/ProfileContext";
 import { useDebouncedSave } from "@/lib/hooks/useDebouncedSave";
 import { createClient } from "@/lib/supabase/client";
 import { getWeekStart } from "@/lib/week";
@@ -62,6 +63,8 @@ function normalizeDailyMetrics(raw: unknown): DailyMetrics {
 export default function TrackerPage() {
   const supabase = useMemo(() => createClient(), []);
   const weekStart = useMemo(() => getWeekStart(), []);
+  const { profile } = useProfile();
+  const isRevoked = profile?.status === "revoked";
 
   const [habitNames, setHabitNames] = useState<string[]>(["", "", ""]);
   const [checks, setChecks] = useState<boolean[][]>(emptyChecks);
@@ -188,6 +191,21 @@ export default function TrackerPage() {
         </p>
       </div>
 
+      {isRevoked && (
+        <div
+          className="rounded-lg border px-4 py-3 text-[14px] leading-snug"
+          style={{
+            background: "var(--tip-bg)",
+            borderColor: "var(--brand-orange-dark)",
+            color: "var(--brand-orange-dark)",
+          }}
+          role="status"
+        >
+          Your access has been paused. Please contact your coach for more
+          information.
+        </div>
+      )}
+
       <AutosaveStatus status={status} />
 
       {/* Non-negotiables */}
@@ -213,7 +231,8 @@ export default function TrackerPage() {
               }}
               placeholder={`Non-negotiable ${i + 1}`}
               maxLength={40}
-              className="w-full rounded-[10px] border border-border bg-background px-3 py-2 text-[13.5px] text-foreground outline-none focus:border-brand-orange"
+              disabled={isRevoked}
+              className="w-full rounded-[10px] border border-border bg-background px-3 py-2 text-[13.5px] text-foreground outline-none focus:border-brand-orange disabled:cursor-not-allowed disabled:opacity-60"
             />
           ))}
         </div>
@@ -256,7 +275,8 @@ export default function TrackerPage() {
                     value={value ?? ""}
                     onChange={(e) => setMetricCell(key, dayIdx, e.target.value)}
                     aria-label={`${label} — ${DAY_LABELS[dayIdx]}`}
-                    className="h-[28px] w-full min-w-0 max-w-[44px] rounded-lg border border-border bg-background px-0.5 text-center text-[11px] text-foreground outline-none focus:border-brand-orange [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                    disabled={isRevoked}
+                    className="h-[28px] w-full min-w-0 max-w-[44px] rounded-lg border border-border bg-background px-0.5 text-center text-[11px] text-foreground outline-none focus:border-brand-orange disabled:cursor-not-allowed disabled:opacity-60 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
                   />
                 </div>
               ))}
@@ -306,7 +326,10 @@ export default function TrackerPage() {
                       onClick={() => toggleCell(rowIdx, colIdx)}
                       aria-pressed={checked}
                       aria-label={`${displayLabel} — ${DAY_LABELS[colIdx]}`}
-                      className={`flex h-[26px] w-[26px] cursor-pointer items-center justify-center rounded-lg transition-colors ${
+                      disabled={isRevoked}
+                      className={`flex h-[26px] w-[26px] items-center justify-center rounded-lg transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
+                        isRevoked ? "" : "cursor-pointer"
+                      } ${
                         checked ? "bg-brand-gradient" : "border border-border bg-background"
                       }`}
                     >
@@ -339,7 +362,8 @@ export default function TrackerPage() {
           onChange={(e) => setWentWell(e.target.value)}
           placeholder="e.g. Hit my water goal every day"
           rows={2}
-          className="w-full resize-none rounded-[10px] border border-border bg-background px-[13px] py-3 text-[13.5px] text-foreground outline-none focus:border-brand-orange"
+          disabled={isRevoked}
+          className="w-full resize-none rounded-[10px] border border-border bg-background px-[13px] py-3 text-[13.5px] text-foreground outline-none focus:border-brand-orange disabled:cursor-not-allowed disabled:opacity-60"
         />
 
         <p className="mb-2 mt-4 text-[11px] font-bold uppercase tracking-wide text-muted">
@@ -350,7 +374,8 @@ export default function TrackerPage() {
           onChange={(e) => setAdjustNext(e.target.value)}
           placeholder="e.g. Prep lunches on Sunday"
           rows={2}
-          className="w-full resize-none rounded-[10px] border border-border bg-background px-[13px] py-3 text-[13.5px] text-foreground outline-none focus:border-brand-orange"
+          disabled={isRevoked}
+          className="w-full resize-none rounded-[10px] border border-border bg-background px-[13px] py-3 text-[13.5px] text-foreground outline-none focus:border-brand-orange disabled:cursor-not-allowed disabled:opacity-60"
         />
       </section>
 

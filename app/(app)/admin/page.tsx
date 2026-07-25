@@ -285,19 +285,23 @@ export default function AdminPage() {
                     style={{
                       background: active
                         ? "rgba(143,174,138,0.15)"
-                        : "rgba(17,17,17,0.06)",
+                        : "var(--badge-neutral-bg)",
                     }}
                   >
                     <span
                       className="h-1.5 w-1.5 rounded-full"
                       style={{
-                        background: active ? "#6a9a63" : "rgba(17,17,17,0.3)",
+                        background: active
+                          ? "#6a9a63"
+                          : "var(--badge-neutral-dot)",
                       }}
                     />
                     <span
                       className="text-[11px] font-bold tracking-wide"
                       style={{
-                        color: active ? "#4d7548" : "rgba(26,22,19,0.5)",
+                        color: active
+                          ? "#4d7548"
+                          : "var(--badge-neutral-text)",
                       }}
                     >
                       {active ? "Active" : "Revoked"}
@@ -334,15 +338,19 @@ export default function AdminPage() {
                     onClick={() => void handleToggleStatus(m)}
                     className="ml-auto cursor-pointer rounded-[10px] px-3 py-2.5 text-center transition-transform hover:-translate-y-0.5"
                     style={{
-                      background: active ? "#ffffff" : "var(--brand-gradient)",
+                      background: active
+                        ? "var(--card)"
+                        : "var(--brand-gradient)",
                       border: active
-                        ? "1.5px solid rgba(17,17,17,0.12)"
-                        : "none",
+                        ? "1.5px solid var(--border)"
+                        : "1.5px solid transparent",
                     }}
                   >
                     <span
                       className="text-xs font-bold"
-                      style={{ color: active ? "#8a2c1f" : "#ffffff" }}
+                      style={{
+                        color: active ? "var(--revoke-text)" : "#ffffff",
+                      }}
                     >
                       {active ? "Revoke" : "Grant"}
                     </span>
@@ -401,19 +409,23 @@ export default function AdminPage() {
                       style={{
                         background: active
                           ? "rgba(143,174,138,0.15)"
-                          : "rgba(17,17,17,0.06)",
+                          : "var(--badge-neutral-bg)",
                       }}
                     >
                       <span
                         className="h-1.5 w-1.5 rounded-full"
                         style={{
-                          background: active ? "#6a9a63" : "rgba(17,17,17,0.3)",
+                          background: active
+                            ? "#6a9a63"
+                            : "var(--badge-neutral-dot)",
                         }}
                       />
                       <span
                         className="text-[11px] font-bold tracking-wide"
                         style={{
-                          color: active ? "#4d7548" : "rgba(26,22,19,0.5)",
+                          color: active
+                            ? "#4d7548"
+                            : "var(--badge-neutral-text)",
                         }}
                       >
                         {active ? "Active" : "Revoked"}
@@ -444,15 +456,19 @@ export default function AdminPage() {
                     onClick={() => void handleToggleStatus(m)}
                     className="cursor-pointer rounded-[10px] px-3 py-2.5 text-center transition-transform hover:-translate-y-0.5"
                     style={{
-                      background: active ? "#ffffff" : "var(--brand-gradient)",
+                      background: active
+                        ? "var(--card)"
+                        : "var(--brand-gradient)",
                       border: active
-                        ? "1.5px solid rgba(17,17,17,0.12)"
-                        : "none",
+                        ? "1.5px solid var(--border)"
+                        : "1.5px solid transparent",
                     }}
                   >
                     <span
                       className="text-xs font-bold"
-                      style={{ color: active ? "#8a2c1f" : "#ffffff" }}
+                      style={{
+                        color: active ? "var(--revoke-text)" : "#ffffff",
+                      }}
                     >
                       {active ? "Revoke" : "Grant"}
                     </span>

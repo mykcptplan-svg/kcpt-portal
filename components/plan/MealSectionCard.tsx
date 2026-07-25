@@ -9,6 +9,7 @@ type MealSectionCardProps = {
   minRequired: number;
   maxItems: number;
   placeholder?: string;
+  disabled?: boolean;
 };
 
 // All current callers keep maxItems - minRequired <= 1, so at most one
@@ -23,6 +24,7 @@ export default function MealSectionCard({
   minRequired,
   maxItems,
   placeholder = "Describe your meal",
+  disabled = false,
 }: MealSectionCardProps) {
   function updateAt(index: number, value: string) {
     const next = [...values];
@@ -85,13 +87,14 @@ export default function MealSectionCard({
                   isOptional ? `(optional) ${placeholder.toLowerCase()}` : placeholder
                 }
                 aria-required={!isOptional}
-                className="h-11 min-w-0 flex-1 rounded-[10px] border border-border bg-background px-3 text-[13.5px] text-foreground outline-none focus:border-brand-orange"
+                disabled={disabled}
+                className="h-11 min-w-0 flex-1 rounded-[10px] border border-border bg-background px-3 text-[13.5px] text-foreground outline-none focus:border-brand-orange disabled:cursor-not-allowed disabled:opacity-60"
               />
             </div>
           );
         })}
 
-        {canAddMore && !hasOptionalSlot && (
+        {canAddMore && !hasOptionalSlot && !disabled && (
           <button
             type="button"
             onClick={addSlot}
