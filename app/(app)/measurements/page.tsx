@@ -31,12 +31,27 @@ type FormState = {
   chest: string;
 };
 
+// Local-only UI state — no backend column or Edge Function support yet, so
+// these values never round-trip through save/load and are excluded from the
+// saveWeightMeasurement payload.
+type ExtraFormState = {
+  arm: string;
+  thigh: string;
+  calve: string;
+};
+
 const METRICS: { key: MetricKey; label: string }[] = [
   { key: "weight", label: "Weight" },
   { key: "waist", label: "Waist" },
   { key: "hips", label: "Hips" },
   { key: "chest", label: "Chest" },
 ];
+
+const EXTRA_FIELDS = [
+  { key: "arm", label: "Arm", placeholder: "e.g. 13.5", unit: "in" },
+  { key: "thigh", label: "Thigh", placeholder: "e.g. 22", unit: "in" },
+  { key: "calve", label: "Calve", placeholder: "e.g. 15", unit: "in" },
+] as const;
 
 const CHART_W = 600;
 const CHART_H = 220;
@@ -62,6 +77,10 @@ function stoneLbsFromTotal(totalLbs: number): { stone: number; lbs: number } {
 
 function emptyForm(): FormState {
   return { stone: "", lbs: "", waist: "", hips: "", chest: "" };
+}
+
+function emptyExtraForm(): ExtraFormState {
+  return { arm: "", thigh: "", calve: "" };
 }
 
 function formFromEntry(entry: Entry | null | undefined): FormState {
@@ -113,6 +132,7 @@ export default function MeasurementsPage() {
   const [entries, setEntries] = useState<Entry[]>([]);
   const [activeMetric, setActiveMetric] = useState<MetricKey>("weight");
   const [form, setForm] = useState<FormState>(emptyForm);
+  const [extraForm, setExtraForm] = useState<ExtraFormState>(emptyExtraForm);
   const [hasSavedEntry, setHasSavedEntry] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -173,6 +193,10 @@ export default function MeasurementsPage() {
 
   function setFormField(key: keyof FormState, value: string) {
     setForm((prev) => ({ ...prev, [key]: value }));
+  }
+
+  function setExtraFormField(key: keyof ExtraFormState, value: string) {
+    setExtraForm((prev) => ({ ...prev, [key]: value }));
   }
 
   const { status, error: saveError } = useDebouncedSave(
@@ -370,6 +394,43 @@ export default function MeasurementsPage() {
                 {form[field.key].trim() !== "" ? (
                   <p className="text-[16px] font-bold text-foreground">
                     {form[field.key]}{" "}
+                    <span className="text-[12px] font-semibold text-muted">
+                      {field.unit}
+                    </span>
+                  </p>
+                ) : (
+                  <p className="text-[16px] font-bold text-foreground">—</p>
+                )}
+              </div>
+            ),
+          )}
+
+          {EXTRA_FIELDS.map((field) =>
+            showForm ? (
+              <div key={field.key}>
+                <p className="mb-2 text-[11px] font-bold uppercase tracking-wide text-muted">
+                  {field.label}
+                </p>
+                <input
+                  type="number"
+                  inputMode="decimal"
+                  value={extraForm[field.key]}
+                  onChange={(e) => setExtraFormField(field.key, e.target.value)}
+                  placeholder={field.placeholder}
+                  className="w-full rounded-[10px] border border-border bg-background px-[13px] py-3 text-[14px] font-semibold text-foreground outline-none focus:border-brand-orange"
+                />
+              </div>
+            ) : (
+              <div
+                key={field.key}
+                className="w-full rounded-[14px] border border-border bg-background px-[13px] py-3"
+              >
+                <p className="mb-1 text-[11px] font-bold uppercase tracking-wide text-muted">
+                  {field.label}
+                </p>
+                {extraForm[field.key].trim() !== "" ? (
+                  <p className="text-[16px] font-bold text-foreground">
+                    {extraForm[field.key]}{" "}
                     <span className="text-[12px] font-semibold text-muted">
                       {field.unit}
                     </span>
