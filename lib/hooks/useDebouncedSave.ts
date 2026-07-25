@@ -9,7 +9,7 @@ export type SaveStatus = "idle" | "saving" | "saved" | "error";
  */
 export function useDebouncedSave<T>(
   value: T,
-  save: (value: T) => Promise<void>,
+  save: (value: T) => Promise<boolean | void>,
   { delay = 800, skip = false }: { delay?: number; skip?: boolean } = {},
 ): { status: SaveStatus; error: string | null } {
   const [status, setStatus] = useState<SaveStatus>("idle");
@@ -29,7 +29,11 @@ export function useDebouncedSave<T>(
     setStatus("saving");
     const timer = setTimeout(() => {
       save(value)
-        .then(() => {
+        .then((persisted) => {
+          if (persisted === false) {
+            setStatus("idle");
+            return;
+          }
           setStatus("saved");
           setError(null);
         })

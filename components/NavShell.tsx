@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -61,6 +61,31 @@ export default function NavShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const { profile, loading } = useProfile();
   const [moreOpen, setMoreOpen] = useState(false);
+  const [showComingSoon, setShowComingSoon] = useState(false);
+  const bellWrapRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!showComingSoon) return;
+
+    const timer = window.setTimeout(() => setShowComingSoon(false), 2000);
+
+    function handlePointerDown(event: PointerEvent) {
+      const target = event.target;
+      if (
+        target instanceof Node &&
+        bellWrapRef.current &&
+        !bellWrapRef.current.contains(target)
+      ) {
+        setShowComingSoon(false);
+      }
+    }
+
+    document.addEventListener("pointerdown", handlePointerDown);
+    return () => {
+      window.clearTimeout(timer);
+      document.removeEventListener("pointerdown", handlePointerDown);
+    };
+  }, [showComingSoon]);
 
   const isActive = (href: string) =>
     href === "/" ? pathname === "/" : pathname.startsWith(href);
@@ -135,13 +160,25 @@ export default function NavShell({ children }: { children: ReactNode }) {
             className="h-10 w-auto"
             priority
           />
-          <button
-            type="button"
-            aria-label="Notifications"
-            className="flex h-[38px] w-[38px] shrink-0 items-center justify-center rounded-full border border-border bg-card text-muted shadow-[0_4px_10px_-4px_rgba(17,17,17,0.12)] transition-colors hover:text-brand-orange-dark"
-          >
-            <BellIcon className="h-5 w-5" />
-          </button>
+          <div ref={bellWrapRef} className="relative">
+            <button
+              type="button"
+              aria-label="Notifications"
+              aria-expanded={showComingSoon}
+              onClick={() => setShowComingSoon(true)}
+              className="flex h-[38px] w-[38px] shrink-0 items-center justify-center rounded-full border border-border bg-card text-muted shadow-[0_4px_10px_-4px_rgba(17,17,17,0.12)] transition-colors hover:text-brand-orange-dark"
+            >
+              <BellIcon className="h-5 w-5" />
+            </button>
+            {showComingSoon && (
+              <div
+                role="status"
+                className="absolute right-0 top-full z-50 mt-2 whitespace-nowrap rounded-[14px] border border-border bg-card px-3 py-2 text-[12px] font-semibold text-muted shadow-[0_4px_10px_-4px_rgba(17,17,17,0.12)]"
+              >
+                Coming soon
+              </div>
+            )}
+          </div>
         </header>
         <main className="flex flex-1 flex-col">{children}</main>
       </div>

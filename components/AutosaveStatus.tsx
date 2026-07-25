@@ -8,8 +8,6 @@ const LABEL: Record<SaveStatus, string> = {
 };
 
 export default function AutosaveStatus({ status }: { status: SaveStatus }) {
-  if (status === "idle") return null;
-
   const dotColor =
     status === "saving"
       ? "bg-brand-orange"
@@ -18,11 +16,17 @@ export default function AutosaveStatus({ status }: { status: SaveStatus }) {
         : "bg-[#8fae8a]";
 
   return (
-    <div className="flex items-center gap-1.5">
-      <span className={`h-[7px] w-[7px] rounded-full transition-colors ${dotColor}`} />
-      <span className="text-[11.5px] font-bold tracking-wide text-muted">
-        {LABEL[status]}
-      </span>
+    <div className="flex h-[18px] items-center gap-1.5">
+      {status !== "idle" && (
+        <>
+          <span
+            className={`h-[7px] w-[7px] rounded-full transition-colors ${dotColor}`}
+          />
+          <span className="text-[11.5px] font-bold tracking-wide text-muted">
+            {LABEL[status]}
+          </span>
+        </>
+      )}
     </div>
   );
 }
