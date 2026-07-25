@@ -136,7 +136,6 @@ export default function CoachReviewPage() {
 
   useEffect(() => {
     if (!selectedMemberId) return;
-    if (detailCache[selectedMemberId]) return;
 
     const token = accessTokenRef.current;
     if (!token) return;
@@ -214,7 +213,7 @@ export default function CoachReviewPage() {
     return () => {
       cancelled = true;
     };
-    // detailCache intentionally omitted — fetch only when missing for selectedMemberId
+    // detailCache intentionally omitted — used for render after fetch, not to skip refetch
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedMemberId, weekStart]);
 
@@ -279,13 +278,17 @@ export default function CoachReviewPage() {
                   key={m.id}
                   type="button"
                   onClick={() => setSelectedMemberId(m.id)}
-                  className="flex shrink-0 cursor-pointer items-center gap-2.5 rounded-full py-2 pl-2 pr-3.5"
-                  style={{
-                    background: selected ? "rgba(251,147,58,0.12)" : "#ffffff",
-                    border: selected
-                      ? "1.5px solid rgba(251,147,58,0.4)"
-                      : "1px solid rgba(17,17,17,0.08)",
-                  }}
+                  className={`flex shrink-0 cursor-pointer items-center gap-2.5 rounded-full py-2 pl-2 pr-3.5 ${
+                    selected ? "" : "border border-border bg-card"
+                  }`}
+                  style={
+                    selected
+                      ? {
+                          background: "rgba(251,147,58,0.12)",
+                          border: "1.5px solid rgba(251,147,58,0.4)",
+                        }
+                      : undefined
+                  }
                 >
                   <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-brand-gradient">
                     <span className="font-heading text-xs text-white">
@@ -293,8 +296,10 @@ export default function CoachReviewPage() {
                     </span>
                   </span>
                   <span
-                    className="whitespace-nowrap text-[13px] font-bold"
-                    style={{ color: selected ? "#B8681D" : "rgba(26,22,19,0.6)" }}
+                    className={`whitespace-nowrap text-[13px] font-bold ${
+                      selected ? "" : "text-muted"
+                    }`}
+                    style={selected ? { color: "#B8681D" } : undefined}
                   >
                     {firstName(m)}
                   </span>
@@ -433,14 +438,12 @@ export default function CoachReviewPage() {
                           <span className="font-heading text-[26px] text-foreground">
                             {currentMeasurement.weight}
                           </span>
-                          {weightDelta != null && (
-                            <span
-                              className="text-[13px] font-bold"
-                              style={{ color: deltaColor(weightDelta) }}
-                            >
-                              {deltaLabel(weightDelta)}
-                            </span>
-                          )}
+                          <span
+                            className="text-[13px] font-bold"
+                            style={{ color: deltaColor(weightDelta ?? 0) }}
+                          >
+                            {deltaLabel(weightDelta ?? 0)}
+                          </span>
                         </div>
                         <p className="text-xs font-medium text-muted">
                           Last logged {formatLastLogged(weekStart)}

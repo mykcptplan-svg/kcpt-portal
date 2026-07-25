@@ -45,9 +45,9 @@ const STATUS_STYLES = {
   complete: { bg: "rgba(143,174,138,0.15)", dot: "#6a9a63", color: "#4d7548" },
   partial: { bg: "rgba(251,147,58,0.14)", dot: "#FB933A", color: "#B8681D" },
   none: {
-    bg: "rgba(17,17,17,0.06)",
-    dot: "rgba(17,17,17,0.3)",
-    color: "rgba(26,22,19,0.5)",
+    bg: "var(--badge-neutral-bg)",
+    dot: "var(--badge-neutral-dot)",
+    color: "var(--badge-neutral-text)",
   },
 } as const;
 
