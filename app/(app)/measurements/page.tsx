@@ -12,6 +12,7 @@ import {
 import { useDebouncedSave } from "@/lib/hooks/useDebouncedSave";
 import { createClient } from "@/lib/supabase/client";
 import { getWeekStart } from "@/lib/week";
+import type { WeightMeasurement } from "@/types";
 
 type MetricKey = "weight" | "waist" | "hips" | "chest";
 
@@ -31,9 +32,6 @@ type FormState = {
   chest: string;
 };
 
-// Local-only UI state — no backend column or Edge Function support yet, so
-// these values never round-trip through save/load and are excluded from the
-// saveWeightMeasurement payload.
 type ExtraFormState = {
   arm: string;
   thigh: string;
@@ -92,6 +90,15 @@ function formFromEntry(entry: Entry | null | undefined): FormState {
     waist: String(entry.waist),
     hips: String(entry.hips),
     chest: String(entry.chest),
+  };
+}
+
+function extraFormFromEntry(row: WeightMeasurement | null): ExtraFormState {
+  if (!row) return emptyExtraForm();
+  return {
+    arm: row.arm != null ? String(row.arm) : "",
+    thigh: row.thigh != null ? String(row.thigh) : "",
+    calve: row.calve != null ? String(row.calve) : "",
   };
 }
 
@@ -173,6 +180,7 @@ export default function MeasurementsPage() {
 
         setEntries(historyEntries);
         setForm(formFromEntry(currentRow ? entryFromRow(currentRow) : null));
+        setExtraForm(extraFormFromEntry(currentRow));
         if (currentRow) setHasSavedEntry(true);
       } catch (err) {
         if (!cancelled) {
@@ -199,8 +207,13 @@ export default function MeasurementsPage() {
     setExtraForm((prev) => ({ ...prev, [key]: value }));
   }
 
+  const saveValue = useMemo(
+    () => ({ ...form, ...extraForm }),
+    [form, extraForm],
+  );
+
   const { status, error: saveError } = useDebouncedSave(
-    form,
+    saveValue,
     async (value) => {
       const accessToken = accessTokenRef.current;
       if (!accessToken) throw new Error("Not logged in.");
@@ -234,9 +247,9 @@ export default function MeasurementsPage() {
           waist,
           hips,
           chest,
-          arm: null,
-          thigh: null,
-          calve: null,
+          arm: parsePositive(value.arm),
+          thigh: parsePositive(value.thigh),
+          calve: parsePositive(value.calve),
         },
         accessToken,
       );
