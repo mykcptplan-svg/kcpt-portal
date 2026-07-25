@@ -145,6 +145,7 @@ export default function MeasurementsPage() {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const accessTokenRef = useRef<string | null>(null);
+  const startedEmptyRef = useRef(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -166,6 +167,8 @@ export default function MeasurementsPage() {
           getWeeksList(token),
         ]);
         if (cancelled) return;
+
+        startedEmptyRef.current = !currentRow;
 
         const measuredWeeks = weeks.filter((w) => w.has_measurements);
         const historyRows = await Promise.all(
@@ -271,7 +274,7 @@ export default function MeasurementsPage() {
     { skip: loading },
   );
 
-  const showForm = !hasSavedEntry || isEditing;
+  const showForm = !hasSavedEntry || isEditing || startedEmptyRef.current;
 
   const chart = useMemo(() => {
     if (entries.length === 0) {
