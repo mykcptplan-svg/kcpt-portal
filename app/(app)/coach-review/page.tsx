@@ -11,6 +11,7 @@ import { getWeeklyBasePlan } from "@/lib/api/basePlan";
 import { getWeeksList } from "@/lib/api/history";
 import { getWeightMeasurement } from "@/lib/api/measurements";
 import { getWeeklyTracker } from "@/lib/api/tracker";
+import { countMealSlotsFilled } from "@/lib/planStats";
 import { createClient } from "@/lib/supabase/client";
 import {
   countNonNegotiablesHit,
@@ -386,9 +387,12 @@ export default function CoachReviewPage() {
                       </h2>
                     </div>
                     <p className="text-[13.5px] font-semibold text-foreground">
-                      {detail.plan
-                        ? "All meals filled in for this week"
-                        : "Not filled in yet"}
+                      {(() => {
+                        const { filled, total } = countMealSlotsFilled(
+                          detail.plan,
+                        );
+                        return `${filled}/${total} meals filled in`;
+                      })()}
                     </p>
                   </div>
 

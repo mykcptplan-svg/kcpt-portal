@@ -15,6 +15,7 @@ import { getWeeklyBasePlan } from "@/lib/api/basePlan";
 import { getWeeksList, type WeekSummary } from "@/lib/api/history";
 import { getWeightMeasurement } from "@/lib/api/measurements";
 import { getWeeklyTracker } from "@/lib/api/tracker";
+import { countMealSlotsFilled } from "@/lib/planStats";
 import { createClient } from "@/lib/supabase/client";
 import {
   countTrackerDaysLogged,
@@ -266,6 +267,8 @@ export default function HistoryPage() {
           const isExpandLoading = expandLoading === week.week_start;
 
           const trackerDays = countTrackerDaysLogged(detail?.tracker ?? null);
+          const { filled: mealsFilled, total: mealsTotal } =
+            countMealSlotsFilled(detail?.plan ?? null);
 
           const sections: {
             key: HistorySectionKey;
@@ -276,9 +279,7 @@ export default function HistoryPage() {
             {
               key: "food",
               title: "Food Plan",
-              summary: week.has_base_plan
-                ? "All meals filled in for the week"
-                : "Not filled in yet",
+              summary: `${mealsFilled}/${mealsTotal} meals filled in`,
               icon: <PlanIcon className="h-3.5 w-3.5 text-white" />,
             },
             {
