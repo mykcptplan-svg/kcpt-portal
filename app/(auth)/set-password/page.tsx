@@ -131,7 +131,13 @@ export default function SetPasswordPage() {
   return (
     <div className="flex flex-col items-center">
       {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src="/brand/heart-mark.png" alt="" width={48} height={48} />
+      <img
+        src="/brand/heart-mark.png"
+        alt=""
+        width={112}
+        height={112}
+        className="drop-shadow-[0_6px_16px_rgba(236,74,49,0.3)]"
+      />
       <h1 className="font-heading mt-4 text-xl uppercase tracking-wide text-foreground">
         Welcome to KCPT
       </h1>
