@@ -183,6 +183,24 @@ Deno.serve(async (req: Request) => {
     }
   }
 
+  const optionalMetrics: Record<"arm" | "thigh" | "calve", number | null> = {
+    arm: null,
+    thigh: null,
+    calve: null,
+  };
+  for (const field of ["arm", "thigh", "calve"] as const) {
+    const raw = record[field];
+    if (raw === undefined || raw === null) {
+      optionalMetrics[field] = null;
+      continue;
+    }
+    const fieldError = validatePositiveNumber(raw, field);
+    if (fieldError) {
+      return jsonResponse({ error: fieldError }, 400);
+    }
+    optionalMetrics[field] = raw as number;
+  }
+
   const week_start = record.week_start;
   const weight = record.weight as number;
   const waist = record.waist as number;
@@ -199,6 +217,9 @@ Deno.serve(async (req: Request) => {
         waist,
         hips,
         chest,
+        arm: optionalMetrics.arm,
+        thigh: optionalMetrics.thigh,
+        calve: optionalMetrics.calve,
       },
       { onConflict: "user_id,week_start" },
     );

@@ -15,7 +15,16 @@
  *   if (!session) throw new Error("Not logged in");
  *   const row = await getWeightMeasurement("2026-07-20", session.access_token);
  *   await saveWeightMeasurement(
- *     { week_start: "2026-07-20", weight: 70, waist: 80, hips: 95, chest: 100 },
+ *     {
+ *       week_start: "2026-07-20",
+ *       weight: 70,
+ *       waist: 80,
+ *       hips: 95,
+ *       chest: 100,
+ *       arm: null,
+ *       thigh: null,
+ *       calve: null,
+ *     },
  *     session.access_token,
  *   );
  *

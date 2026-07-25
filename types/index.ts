@@ -54,4 +54,7 @@ export type WeightMeasurement = {
   waist: number;
   hips: number;
   chest: number;
+  arm: number | null;
+  thigh: number | null;
+  calve: number | null;
 };
