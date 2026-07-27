@@ -283,7 +283,7 @@ export default function TrackerPage() {
 
       {/* Pillars */}
       <section className="rounded-[20px] border border-border bg-card px-4 py-5 shadow-[0_12px_26px_-18px_rgba(17,17,17,0.16)]">
-        <div className="mb-4 flex items-center gap-3 px-1">
+        <div className="mb-2 flex items-center gap-3 px-1">
           <span className="flex h-[38px] w-[38px] shrink-0 items-center justify-center rounded-full bg-brand-gradient text-white">
             <RulerIcon className="h-4 w-4" />
           </span>
@@ -291,6 +291,11 @@ export default function TrackerPage() {
             Pillars
           </h2>
         </div>
+
+        <p className="mb-3 px-1 text-[12px] font-semibold leading-snug text-muted">
+          Tap the circle only if you stayed on track without counting calories
+          — not if you overate.
+        </p>
 
         <div className="grid grid-cols-[minmax(100px,1.4fr)_repeat(7,minmax(0,1fr))] items-center gap-x-0.5 gap-y-2">
           <div />
@@ -303,44 +308,65 @@ export default function TrackerPage() {
             </div>
           ))}
 
-          {/* Calories — hybrid number | tick */}
+          {/* Calories — hybrid number | tick (single-height cell) */}
           <div className="pr-1.5 text-xs font-bold leading-tight text-foreground">
             Calories (kcal)
           </div>
           {dailyMetrics.calories.map((value, dayIdx) => {
             const ticked = value === true;
+            const hasNumber = typeof value === "number";
             return (
               <div
                 key={`calories-${dayIdx}`}
-                className="flex flex-col items-center gap-0.5"
+                className="flex justify-center"
               >
-                <button
-                  type="button"
-                  onClick={() => toggleCalorieTick(dayIdx)}
-                  aria-pressed={ticked}
-                  aria-label={`Calories tick — ${DAY_LABELS[dayIdx]}`}
-                  disabled={isRevoked}
-                  className={`flex h-11 w-11 items-center justify-center rounded-lg transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
-                    isRevoked ? "" : "cursor-pointer"
-                  } ${
-                    ticked
-                      ? "bg-brand-gradient"
-                      : "border border-border bg-background"
-                  }`}
-                >
-                  {ticked && <CheckIcon className="h-3.5 w-3.5 text-white" />}
-                </button>
-                {!ticked && (
-                  <input
-                    type="number"
-                    inputMode="decimal"
-                    min={0}
-                    value={typeof value === "number" ? value : ""}
-                    onChange={(e) => setCalorieNumber(dayIdx, e.target.value)}
-                    aria-label={`Calories — ${DAY_LABELS[dayIdx]}`}
+                {ticked ? (
+                  <button
+                    type="button"
+                    onClick={() => toggleCalorieTick(dayIdx)}
+                    aria-pressed
+                    aria-label={`Calories tick — ${DAY_LABELS[dayIdx]}`}
                     disabled={isRevoked}
-                    className="h-[34px] w-full min-w-0 max-w-[48px] rounded-lg border border-border bg-background px-1 text-center text-[11px] text-foreground outline-none focus:border-brand-orange disabled:cursor-not-allowed disabled:opacity-60 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
-                  />
+                    className={`flex h-[34px] w-full min-w-0 max-w-[48px] items-center justify-center rounded-lg bg-brand-gradient transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
+                      isRevoked ? "" : "cursor-pointer"
+                    }`}
+                  >
+                    <CheckIcon className="h-3.5 w-3.5 text-white" />
+                  </button>
+                ) : (
+                  <div className="relative h-[34px] w-full min-w-0 max-w-[48px]">
+                    <input
+                      type="number"
+                      inputMode="decimal"
+                      min={0}
+                      value={hasNumber ? value : ""}
+                      onChange={(e) => setCalorieNumber(dayIdx, e.target.value)}
+                      aria-label={`Calories — ${DAY_LABELS[dayIdx]}`}
+                      disabled={isRevoked}
+                      className={`h-full w-full rounded-lg pl-5 pr-1 text-center text-[11px] outline-none disabled:cursor-not-allowed disabled:opacity-60 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none ${
+                        hasNumber
+                          ? "border border-transparent bg-brand-gradient text-white focus:ring-1 focus:ring-white/40"
+                          : "border border-foreground/25 bg-background text-foreground focus:border-brand-orange"
+                      }`}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => toggleCalorieTick(dayIdx)}
+                      aria-pressed={false}
+                      aria-label={`Calories tick — ${DAY_LABELS[dayIdx]}`}
+                      disabled={isRevoked}
+                      className={`absolute inset-y-0 left-0 flex w-[22px] items-center justify-center rounded-l-lg transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
+                        isRevoked ? "" : "cursor-pointer"
+                      }`}
+                    >
+                      <span
+                        className={`h-2.5 w-2.5 rounded-full border ${
+                          hasNumber ? "border-white" : "border-muted"
+                        }`}
+                        aria-hidden
+                      />
+                    </button>
+                  </div>
                 )}
               </div>
             );
@@ -362,7 +388,7 @@ export default function TrackerPage() {
                     onChange={(e) => setNumericCell(key, dayIdx, e.target.value)}
                     aria-label={`${label} — ${DAY_LABELS[dayIdx]}`}
                     disabled={isRevoked}
-                    className="h-[34px] w-full min-w-0 max-w-[48px] rounded-lg border border-border bg-background px-1 text-center text-[11px] text-foreground outline-none focus:border-brand-orange disabled:cursor-not-allowed disabled:opacity-60 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                    className="h-[34px] w-full min-w-0 max-w-[48px] rounded-lg border border-foreground/25 bg-background px-1 text-center text-[11px] text-foreground outline-none focus:border-brand-orange disabled:cursor-not-allowed disabled:opacity-60 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
                   />
                 </div>
               ))}
@@ -383,12 +409,12 @@ export default function TrackerPage() {
                   aria-pressed={checked}
                   aria-label={`Workout — ${DAY_LABELS[dayIdx]}`}
                   disabled={isRevoked}
-                  className={`flex h-8 w-8 items-center justify-center rounded-lg transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
+                  className={`flex h-[34px] w-full min-w-0 max-w-[48px] items-center justify-center rounded-lg transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
                     isRevoked ? "" : "cursor-pointer"
                   } ${
                     checked
                       ? "bg-brand-gradient"
-                      : "border border-border bg-background"
+                      : "border border-foreground/25 bg-background"
                   }`}
                 >
                   {checked && <CheckIcon className="h-3.5 w-3.5 text-white" />}
