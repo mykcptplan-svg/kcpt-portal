@@ -7,6 +7,9 @@
  * PUT always writes user_id from the authenticated token. GET may pass an
  * optional user_id query param for coach/admin Coach Review reads; members
  * requesting another user's id receive 403.
+ *
+ * API field `non_negotiables` maps to the Postgres `habits` jsonb column
+ * (no column rename / migration).
  */
 
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
@@ -44,42 +47,52 @@ function isUuid(value: string): boolean {
 }
 
 /** Returns an error message if invalid, otherwise null. */
-function validateHabits(habits: unknown): string | null {
-  if (!Array.isArray(habits)) {
-    return "habits must be an array";
+function validateNonNegotiables(value: unknown): string | null {
+  if (!Array.isArray(value) || value.length !== 3) {
+    return "non_negotiables must be an array of exactly 3 strings";
   }
-
-  for (let i = 0; i < habits.length; i++) {
-    const item = habits[i];
-    if (item === null || typeof item !== "object" || Array.isArray(item)) {
-      return `habits[${i}] must be an object`;
-    }
-
-    const habit = item as Record<string, unknown>;
-
-    if (typeof habit.name !== "string") {
-      return `habits[${i}].name must be a string`;
-    }
-
-    if (
-      !Array.isArray(habit.days) ||
-      habit.days.length !== 7 ||
-      !habit.days.every((d) => typeof d === "boolean")
-    ) {
-      return `habits[${i}].days must be an array of exactly 7 booleans`;
+  for (let i = 0; i < value.length; i++) {
+    if (typeof value[i] !== "string") {
+      return `non_negotiables[${i}] must be a string`;
     }
   }
-
   return null;
 }
 
-const DAILY_METRIC_KEYS = ["calories", "protein", "steps", "water"] as const;
-const DAILY_METRIC_CEILINGS: Record<(typeof DAILY_METRIC_KEYS)[number], number> =
+/** Coerce legacy habits objects or string[] into exactly 3 name strings. */
+function coerceNonNegotiables(raw: unknown): string[] {
+  const names = ["", "", ""];
+  if (!Array.isArray(raw)) return names;
+  for (let i = 0; i < 3; i++) {
+    const item = raw[i];
+    if (typeof item === "string") {
+      names[i] = item;
+    } else if (
+      item !== null &&
+      typeof item === "object" &&
+      !Array.isArray(item) &&
+      typeof (item as Record<string, unknown>).name === "string"
+    ) {
+      names[i] = (item as Record<string, unknown>).name as string;
+    }
+  }
+  return names;
+}
+
+const DAILY_METRIC_KEYS = [
+  "calories",
+  "protein",
+  "water",
+  "steps",
+  "workout",
+] as const;
+
+const NUMERIC_CEILINGS: Record<"calories" | "protein" | "water" | "steps", number> =
   {
     calories: 10000,
     protein: 500,
-    steps: 100000,
     water: 20,
+    steps: 100000,
   };
 
 /** Returns an error message if invalid, otherwise null. */
@@ -95,26 +108,38 @@ function validateDailyMetrics(metrics: unknown): string | null {
     keys.length !== DAILY_METRIC_KEYS.length ||
     !DAILY_METRIC_KEYS.every((key) => keys.includes(key))
   ) {
-    return "daily_metrics must have exactly keys: calories, protein, steps, water";
+    return "daily_metrics must have exactly keys: calories, protein, water, steps, workout";
   }
 
   for (const key of DAILY_METRIC_KEYS) {
     const values = obj[key];
     if (!Array.isArray(values) || values.length !== 7) {
-      return `daily_metrics.${key} must be an array of exactly 7 numbers or null`;
+      return `daily_metrics.${key} must be an array of exactly 7 elements`;
     }
 
-    const ceiling = DAILY_METRIC_CEILINGS[key];
     for (let i = 0; i < values.length; i++) {
       const cell = values[i];
       if (cell === null) continue;
+
+      if (key === "workout") {
+        if (typeof cell !== "boolean") {
+          return `daily_metrics.workout[${i}] must be null or a boolean`;
+        }
+        continue;
+      }
+
+      if (key === "calories" && cell === true) continue;
+
+      const ceiling = NUMERIC_CEILINGS[key];
       if (
         typeof cell !== "number" ||
         !Number.isFinite(cell) ||
         cell < 0 ||
         cell > ceiling
       ) {
-        return `daily_metrics.${key}[${i}] must be null or a number between 0 and ${ceiling}`;
+        return `daily_metrics.${key}[${i}] must be null${
+          key === "calories" ? ", true," : ""
+        } or a number between 0 and ${ceiling}`;
       }
     }
   }
@@ -139,6 +164,17 @@ function parseOptionalResetText(
     return { error: `${field} must be at most ${RESET_TEXT_MAX} characters` };
   }
   return { value };
+}
+
+function mapTrackerRow(
+  row: Record<string, unknown> | null,
+): Record<string, unknown> | null {
+  if (row === null) return null;
+  const { habits, ...rest } = row;
+  return {
+    ...rest,
+    non_negotiables: coerceNonNegotiables(habits),
+  };
 }
 
 Deno.serve(async (req: Request) => {
@@ -232,7 +268,10 @@ Deno.serve(async (req: Request) => {
       return jsonResponse({ error: "Unable to load tracker" }, 500);
     }
 
-    return jsonResponse({ data: data ?? null }, 200);
+    return jsonResponse(
+      { data: mapTrackerRow(data as Record<string, unknown> | null) },
+      200,
+    );
   }
 
   // PUT
@@ -256,9 +295,9 @@ Deno.serve(async (req: Request) => {
     );
   }
 
-  const habitsError = validateHabits(record.habits);
-  if (habitsError) {
-    return jsonResponse({ error: habitsError }, 400);
+  const nonNegotiablesError = validateNonNegotiables(record.non_negotiables);
+  if (nonNegotiablesError) {
+    return jsonResponse({ error: nonNegotiablesError }, 400);
   }
 
   const dailyMetricsError = validateDailyMetrics(record.daily_metrics);
@@ -287,7 +326,7 @@ Deno.serve(async (req: Request) => {
   }
 
   const week_start = record.week_start;
-  const habits = record.habits;
+  const non_negotiables = record.non_negotiables;
   const daily_metrics = record.daily_metrics;
   const sunday_reset_done = record.sunday_reset_done;
   const went_well = wentWellParsed.value;
@@ -299,7 +338,7 @@ Deno.serve(async (req: Request) => {
       {
         user_id: user.id,
         week_start,
-        habits,
+        habits: non_negotiables,
         daily_metrics,
         sunday_reset_done,
         went_well,

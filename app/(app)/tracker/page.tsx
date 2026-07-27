@@ -6,7 +6,6 @@ import HeartLoader from "@/components/HeartLoader";
 import {
   ArrowRightIcon,
   CheckIcon,
-  ClipboardCheckIcon,
   RefreshIcon,
   RulerIcon,
 } from "@/components/icons";
@@ -19,45 +18,77 @@ import type { DailyMetrics } from "@/types";
 
 const DAY_LABELS = ["M", "T", "W", "T", "F", "S", "S"];
 
-const METRIC_ROWS: {
-  key: keyof DailyMetrics;
-  label: string;
-}[] = [
-  { key: "calories", label: "Calories (kcal)" },
-  { key: "protein", label: "Protein (g)" },
-  { key: "steps", label: "Steps" },
-  { key: "water", label: "Water (L)" },
-];
+const HABIT_PLACEHOLDERS = [
+  "In bed by 11pm",
+  "No alcohol weekdays",
+  "10k steps",
+] as const;
 
-function emptyChecks(): boolean[][] {
-  return Array.from({ length: 3 }, () => Array(7).fill(false) as boolean[]);
-}
+const NUMERIC_PILLAR_ROWS: {
+  key: "protein" | "water" | "steps";
+  label: string;
+  step?: string;
+}[] = [
+  { key: "protein", label: "Protein (g)" },
+  { key: "water", label: "Water (L)", step: "0.1" },
+  { key: "steps", label: "Steps" },
+];
 
 function emptyMetrics(): DailyMetrics {
   return {
-    calories: Array(7).fill(null) as (number | null)[],
+    calories: Array(7).fill(null) as (number | true | null)[],
     protein: Array(7).fill(null) as (number | null)[],
-    steps: Array(7).fill(null) as (number | null)[],
     water: Array(7).fill(null) as (number | null)[],
+    steps: Array(7).fill(null) as (number | null)[],
+    workout: Array(7).fill(null) as (boolean | null)[],
   };
 }
 
+function normalizeSeries7(
+  raw: unknown,
+  parseCell: (cell: unknown) => number | true | boolean | null,
+): (number | true | boolean | null)[] {
+  if (!Array.isArray(raw) || raw.length !== 7) {
+    return Array(7).fill(null);
+  }
+  return raw.slice(0, 7).map(parseCell);
+}
+
+/**
+ * Load-path normalizer: always returns all 5 pillar keys (length 7).
+ * Accepts calories as null | true | number; missing workout defaults to null×7.
+ * Does not fall back to empty solely because calories contains `true`.
+ */
 function normalizeDailyMetrics(raw: unknown): DailyMetrics {
   const fallback = emptyMetrics();
   if (raw === null || typeof raw !== "object" || Array.isArray(raw)) {
     return fallback;
   }
   const obj = raw as Record<string, unknown>;
-  for (const { key } of METRIC_ROWS) {
-    const arr = obj[key];
-    if (!Array.isArray(arr) || arr.length !== 7) return fallback;
-  }
-  return {
-    calories: (obj.calories as (number | null)[]).slice(0, 7),
-    protein: (obj.protein as (number | null)[]).slice(0, 7),
-    steps: (obj.steps as (number | null)[]).slice(0, 7),
-    water: (obj.water as (number | null)[]).slice(0, 7),
+
+  const calories = normalizeSeries7(obj.calories, (cell) => {
+    if (cell === null || cell === undefined) return null;
+    if (cell === true) return true;
+    if (typeof cell === "number" && Number.isFinite(cell)) return cell;
+    return null;
+  }) as (number | true | null)[];
+
+  const parseNumber = (cell: unknown): number | null => {
+    if (cell === null || cell === undefined) return null;
+    if (typeof cell === "number" && Number.isFinite(cell)) return cell;
+    return null;
   };
+
+  const protein = normalizeSeries7(obj.protein, parseNumber) as (number | null)[];
+  const water = normalizeSeries7(obj.water, parseNumber) as (number | null)[];
+  const steps = normalizeSeries7(obj.steps, parseNumber) as (number | null)[];
+  const workout = normalizeSeries7(obj.workout, (cell) => {
+    if (cell === null || cell === undefined) return null;
+    if (typeof cell === "boolean") return cell;
+    return null;
+  }) as (boolean | null)[];
+
+  return { calories, protein, water, steps, workout };
 }
 
 export default function TrackerPage() {
@@ -66,8 +97,7 @@ export default function TrackerPage() {
   const { profile } = useProfile();
   const isRevoked = profile?.status === "revoked";
 
-  const [habitNames, setHabitNames] = useState<string[]>(["", "", ""]);
-  const [checks, setChecks] = useState<boolean[][]>(emptyChecks);
+  const [nonNegotiables, setNonNegotiables] = useState<string[]>(["", "", ""]);
   const [dailyMetrics, setDailyMetrics] = useState<DailyMetrics>(emptyMetrics);
   const [wentWell, setWentWell] = useState("");
   const [adjustNext, setAdjustNext] = useState("");
@@ -92,13 +122,8 @@ export default function TrackerPage() {
         const tracker = await getWeeklyTracker(weekStart, session.access_token);
         if (cancelled || !tracker) return;
 
-        const habits = tracker.habits.slice(0, 3);
-        setHabitNames([0, 1, 2].map((i) => habits[i]?.name ?? ""));
-        setChecks(
-          [0, 1, 2].map(
-            (i) => habits[i]?.days?.slice() ?? (Array(7).fill(false) as boolean[]),
-          ),
-        );
+        const names = tracker.non_negotiables ?? [];
+        setNonNegotiables([0, 1, 2].map((i) => names[i] ?? ""));
         setDailyMetrics(normalizeDailyMetrics(tracker.daily_metrics));
         setWentWell(tracker.went_well ?? "");
         setAdjustNext(tracker.adjust_next ?? "");
@@ -117,16 +142,8 @@ export default function TrackerPage() {
     };
   }, [supabase, weekStart]);
 
-  function toggleCell(rowIdx: number, colIdx: number) {
-    setChecks((prev) => {
-      const next = prev.map((row) => row.slice());
-      next[rowIdx][colIdx] = !next[rowIdx][colIdx];
-      return next;
-    });
-  }
-
-  function setMetricCell(
-    key: keyof DailyMetrics,
+  function setNumericCell(
+    key: "protein" | "water" | "steps",
     dayIdx: number,
     raw: string,
   ) {
@@ -142,9 +159,38 @@ export default function TrackerPage() {
     });
   }
 
+  function setCalorieNumber(dayIdx: number, raw: string) {
+    setDailyMetrics((prev) => {
+      const nextRow = prev.calories.slice();
+      if (raw.trim() === "") {
+        nextRow[dayIdx] = null;
+      } else {
+        const n = Number(raw);
+        nextRow[dayIdx] = Number.isFinite(n) ? n : null;
+      }
+      return { ...prev, calories: nextRow };
+    });
+  }
+
+  function toggleCalorieTick(dayIdx: number) {
+    setDailyMetrics((prev) => {
+      const nextRow = prev.calories.slice();
+      nextRow[dayIdx] = nextRow[dayIdx] === true ? null : true;
+      return { ...prev, calories: nextRow };
+    });
+  }
+
+  function toggleWorkout(dayIdx: number) {
+    setDailyMetrics((prev) => {
+      const nextRow = prev.workout.slice();
+      nextRow[dayIdx] = nextRow[dayIdx] === true ? null : true;
+      return { ...prev, workout: nextRow };
+    });
+  }
+
   const draft = useMemo(
-    () => ({ checks, habitNames, dailyMetrics, wentWell, adjustNext }),
-    [checks, habitNames, dailyMetrics, wentWell, adjustNext],
+    () => ({ nonNegotiables, dailyMetrics, wentWell, adjustNext }),
+    [nonNegotiables, dailyMetrics, wentWell, adjustNext],
   );
 
   const { status, error: saveError } = useDebouncedSave(
@@ -155,10 +201,7 @@ export default function TrackerPage() {
       await saveWeeklyTracker(
         {
           week_start: weekStart,
-          habits: value.habitNames.map((name, i) => ({
-            name,
-            days: value.checks[i],
-          })),
+          non_negotiables: value.nonNegotiables,
           daily_metrics: value.dailyMetrics,
           sunday_reset_done: Boolean(
             value.wentWell.trim() || value.adjustNext.trim(),
@@ -219,17 +262,17 @@ export default function TrackerPage() {
           </h2>
         </div>
         <div className="flex flex-col gap-2.5">
-          {habitNames.map((name, i) => (
+          {nonNegotiables.map((name, i) => (
             <input
               key={i}
               type="text"
               value={name}
               onChange={(e) => {
-                const next = habitNames.slice();
+                const next = nonNegotiables.slice();
                 next[i] = e.target.value;
-                setHabitNames(next);
+                setNonNegotiables(next);
               }}
-              placeholder={`Non-negotiable ${i + 1}`}
+              placeholder={HABIT_PLACEHOLDERS[i]}
               maxLength={40}
               disabled={isRevoked}
               className="w-full rounded-[10px] border border-border bg-background px-3 py-2 text-[13.5px] text-foreground outline-none focus:border-brand-orange disabled:cursor-not-allowed disabled:opacity-60"
@@ -238,18 +281,18 @@ export default function TrackerPage() {
         </div>
       </section>
 
-      {/* Daily Numbers */}
+      {/* Pillars */}
       <section className="rounded-[20px] border border-border bg-card px-4 py-5 shadow-[0_12px_26px_-18px_rgba(17,17,17,0.16)]">
         <div className="mb-4 flex items-center gap-3 px-1">
           <span className="flex h-[38px] w-[38px] shrink-0 items-center justify-center rounded-full bg-brand-gradient text-white">
             <RulerIcon className="h-4 w-4" />
           </span>
           <h2 className="font-heading text-base uppercase tracking-wide text-foreground">
-            Daily Numbers
+            Pillars
           </h2>
         </div>
 
-        <div className="grid grid-cols-[minmax(100px,1.4fr)_repeat(7,minmax(0,1fr))] items-center gap-x-0.5 gap-y-1.5">
+        <div className="grid grid-cols-[minmax(100px,1.4fr)_repeat(7,minmax(0,1fr))] items-center gap-x-0.5 gap-y-2">
           <div />
           {DAY_LABELS.map((d, i) => (
             <div
@@ -260,7 +303,50 @@ export default function TrackerPage() {
             </div>
           ))}
 
-          {METRIC_ROWS.map(({ key, label }) => (
+          {/* Calories — hybrid number | tick */}
+          <div className="pr-1.5 text-xs font-bold leading-tight text-foreground">
+            Calories (kcal)
+          </div>
+          {dailyMetrics.calories.map((value, dayIdx) => {
+            const ticked = value === true;
+            return (
+              <div
+                key={`calories-${dayIdx}`}
+                className="flex flex-col items-center gap-0.5"
+              >
+                <button
+                  type="button"
+                  onClick={() => toggleCalorieTick(dayIdx)}
+                  aria-pressed={ticked}
+                  aria-label={`Calories tick — ${DAY_LABELS[dayIdx]}`}
+                  disabled={isRevoked}
+                  className={`flex h-11 w-11 items-center justify-center rounded-lg transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
+                    isRevoked ? "" : "cursor-pointer"
+                  } ${
+                    ticked
+                      ? "bg-brand-gradient"
+                      : "border border-border bg-background"
+                  }`}
+                >
+                  {ticked && <CheckIcon className="h-3.5 w-3.5 text-white" />}
+                </button>
+                {!ticked && (
+                  <input
+                    type="number"
+                    inputMode="decimal"
+                    min={0}
+                    value={typeof value === "number" ? value : ""}
+                    onChange={(e) => setCalorieNumber(dayIdx, e.target.value)}
+                    aria-label={`Calories — ${DAY_LABELS[dayIdx]}`}
+                    disabled={isRevoked}
+                    className="h-[34px] w-full min-w-0 max-w-[48px] rounded-lg border border-border bg-background px-1 text-center text-[11px] text-foreground outline-none focus:border-brand-orange disabled:cursor-not-allowed disabled:opacity-60 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                  />
+                )}
+              </div>
+            );
+          })}
+
+          {NUMERIC_PILLAR_ROWS.map(({ key, label, step }) => (
             <Fragment key={key}>
               <div className="pr-1.5 text-xs font-bold leading-tight text-foreground">
                 {label}
@@ -269,75 +355,45 @@ export default function TrackerPage() {
                 <div key={`${key}-${dayIdx}`} className="flex justify-center">
                   <input
                     type="number"
-                    inputMode="numeric"
+                    inputMode="decimal"
                     min={0}
-                    step={key === "water" ? "0.1" : undefined}
+                    step={step}
                     value={value ?? ""}
-                    onChange={(e) => setMetricCell(key, dayIdx, e.target.value)}
+                    onChange={(e) => setNumericCell(key, dayIdx, e.target.value)}
                     aria-label={`${label} — ${DAY_LABELS[dayIdx]}`}
                     disabled={isRevoked}
-                    className="h-[28px] w-full min-w-0 max-w-[44px] rounded-lg border border-border bg-background px-0.5 text-center text-[11px] text-foreground outline-none focus:border-brand-orange disabled:cursor-not-allowed disabled:opacity-60 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                    className="h-[34px] w-full min-w-0 max-w-[48px] rounded-lg border border-border bg-background px-1 text-center text-[11px] text-foreground outline-none focus:border-brand-orange disabled:cursor-not-allowed disabled:opacity-60 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
                   />
                 </div>
               ))}
             </Fragment>
           ))}
-        </div>
-      </section>
 
-      {/* Check-in grid */}
-      <section className="rounded-[20px] border border-border bg-card px-4 py-5 shadow-[0_12px_26px_-18px_rgba(17,17,17,0.16)]">
-        <div className="mb-4 flex items-center gap-3 px-1">
-          <span className="flex h-[38px] w-[38px] shrink-0 items-center justify-center rounded-full bg-brand-gradient text-white">
-            <ClipboardCheckIcon className="h-4 w-4" />
-          </span>
-          <h2 className="font-heading text-base uppercase tracking-wide text-foreground">
-            This Week&apos;s Check-In
-          </h2>
-        </div>
-
-        <div className="grid grid-cols-[minmax(88px,1.3fr)_repeat(7,minmax(0,1fr))] items-center gap-x-0.5 gap-y-1">
-          <div />
-          {DAY_LABELS.map((d, i) => (
-            <div
-              key={`${d}-${i}`}
-              className="text-center text-[10.5px] font-extrabold tracking-wide text-muted"
-            >
-              {d}
-            </div>
-          ))}
-
-          {habitNames.map((label, rowIdx) => {
-            const displayLabel = label.trim() || "Not set yet";
+          {/* Workout — checkboxes */}
+          <div className="pr-1.5 text-xs font-bold leading-tight text-foreground">
+            Workout
+          </div>
+          {dailyMetrics.workout.map((value, dayIdx) => {
+            const checked = value === true;
             return (
-              <Fragment key={rowIdx}>
-                <div className="line-clamp-2 overflow-hidden pr-1.5 text-xs font-bold leading-tight text-foreground">
-                  {label.trim() || (
-                    <span className="italic text-muted">Not set yet</span>
-                  )}
-                </div>
-                {checks[rowIdx].map((checked, colIdx) => (
-                  <div
-                    key={`${rowIdx}-${colIdx}`}
-                    className="flex justify-center py-0.5"
-                  >
-                    <button
-                      type="button"
-                      onClick={() => toggleCell(rowIdx, colIdx)}
-                      aria-pressed={checked}
-                      aria-label={`${displayLabel} — ${DAY_LABELS[colIdx]}`}
-                      disabled={isRevoked}
-                      className={`flex h-[26px] w-[26px] items-center justify-center rounded-lg transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
-                        isRevoked ? "" : "cursor-pointer"
-                      } ${
-                        checked ? "bg-brand-gradient" : "border border-border bg-background"
-                      }`}
-                    >
-                      {checked && <CheckIcon className="h-2.5 w-2.5 text-white" />}
-                    </button>
-                  </div>
-                ))}
-              </Fragment>
+              <div key={`workout-${dayIdx}`} className="flex justify-center py-0.5">
+                <button
+                  type="button"
+                  onClick={() => toggleWorkout(dayIdx)}
+                  aria-pressed={checked}
+                  aria-label={`Workout — ${DAY_LABELS[dayIdx]}`}
+                  disabled={isRevoked}
+                  className={`flex h-8 w-8 items-center justify-center rounded-lg transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
+                    isRevoked ? "" : "cursor-pointer"
+                  } ${
+                    checked
+                      ? "bg-brand-gradient"
+                      : "border border-border bg-background"
+                  }`}
+                >
+                  {checked && <CheckIcon className="h-3.5 w-3.5 text-white" />}
+                </button>
+              </div>
             );
           })}
         </div>
@@ -353,6 +409,11 @@ export default function TrackerPage() {
             Sunday Reset
           </h2>
         </div>
+
+        <p className="mb-4 text-[13.5px] font-semibold leading-relaxed text-foreground">
+          Reflect. Reset. Plan. Complete your Sunday Reset in the KCPT App, build
+          your new Food Plan and get ready for another successful week.
+        </p>
 
         <p className="mb-2 text-[11px] font-bold uppercase tracking-wide text-muted">
           What went well this week?
@@ -379,11 +440,24 @@ export default function TrackerPage() {
         />
       </section>
 
+      <div className="flex gap-3.5 rounded-[18px] border border-tip-border bg-tip-bg p-[18px]">
+        <p className="text-[13.5px] font-semibold leading-relaxed text-foreground">
+          Remember… Life happens. Some days won&apos;t go to plan. If you miss a
+          box, don&apos;t worry. Don&apos;t wait until Monday. Simply tick the
+          next box and keep going. Consistency beats perfection.
+        </p>
+      </div>
+
       {(loadError || saveError) && (
         <p className="text-xs text-brand-orange-dark">{loadError ?? saveError}</p>
       )}
 
-      <div className="flex items-center gap-3.5 rounded-[18px] border border-tip-border bg-gradient-to-r from-[rgba(247,162,53,0.08)] to-[rgba(236,74,49,0.05)] p-4">
+      <a
+        href="https://forms.gle/vW1VFdMaXgaGcUUy5"
+        target="_blank"
+        rel="noopener noreferrer"
+        className="flex items-center gap-3.5 rounded-[18px] border border-tip-border bg-gradient-to-r from-[rgba(247,162,53,0.08)] to-[rgba(236,74,49,0.05)] p-4 transition-colors hover:border-brand-orange/40"
+      >
         <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-brand-gradient text-white">
           <RefreshIcon className="h-4 w-4" />
         </span>
@@ -396,7 +470,7 @@ export default function TrackerPage() {
         <span className="flex items-center gap-1 whitespace-nowrap text-xs font-bold text-brand-orange-dark">
           Open <ArrowRightIcon className="h-3.5 w-3.5" />
         </span>
-      </div>
+      </a>
 
       <div className="rounded-2xl bg-brand-gradient px-[18px] py-[14px] text-center">
         <span className="font-heading text-[15px] uppercase tracking-wide text-white">

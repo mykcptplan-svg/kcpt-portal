@@ -7,22 +7,24 @@ export function countTrackerDaysLogged(
   if (!tracker) return 0;
 
   const metrics = tracker.daily_metrics;
-  const metricSeries: ((number | null)[] | undefined)[] = metrics
-    ? [
-        metrics.calories,
-        metrics.protein,
-        metrics.steps,
-        metrics.water,
-      ]
-    : [];
+  if (!metrics) return 0;
 
   let count = 0;
   for (let day = 0; day < 7; day++) {
-    const habitChecked = tracker.habits.some((h) => h.days[day] === true);
-    const metricLogged = metricSeries.some(
-      (series) => series != null && series[day] != null,
-    );
-    if (habitChecked || metricLogged) count += 1;
+    const calorieLogged = metrics.calories?.[day] != null;
+    const proteinLogged = metrics.protein?.[day] != null;
+    const waterLogged = metrics.water?.[day] != null;
+    const stepsLogged = metrics.steps?.[day] != null;
+    const workoutLogged = metrics.workout?.[day] === true;
+    if (
+      calorieLogged ||
+      proteinLogged ||
+      waterLogged ||
+      stepsLogged ||
+      workoutLogged
+    ) {
+      count += 1;
+    }
   }
   return count;
 }
@@ -36,19 +38,18 @@ export function findClosestEarlierMeasuredWeek(
   );
 }
 
-export function countNonNegotiablesHit(
-  tracker: WeeklyTrackerEntry | null,
-): number {
-  if (!tracker) return 0;
-  return tracker.habits.reduce(
-    (sum, habit) => sum + habit.days.filter(Boolean).length,
-    0,
-  );
-}
-
 /** Average of the non-null entries in a 7-day metric series, or null if none are logged. */
 export function averageDailyMetric(values: (number | null)[]): number | null {
   const present = values.filter((v): v is number => v != null);
+  if (present.length === 0) return null;
+  return present.reduce((sum, v) => sum + v, 0) / present.length;
+}
+
+/** Average calories ignoring `true` (ticked-without-number) cells. */
+export function averageCaloriesMetric(
+  values: (number | true | null)[],
+): number | null {
+  const present = values.filter((v): v is number => typeof v === "number");
   if (present.length === 0) return null;
   return present.reduce((sum, v) => sum + v, 0) / present.length;
 }

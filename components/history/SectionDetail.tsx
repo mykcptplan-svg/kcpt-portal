@@ -1,9 +1,8 @@
-import { Fragment } from "react";
-import { CheckIcon } from "@/components/icons";
-import { averageDailyMetric } from "@/lib/trackerStats";
+import {
+  averageCaloriesMetric,
+  averageDailyMetric,
+} from "@/lib/trackerStats";
 import type { WeeklyBasePlan, WeeklyTrackerEntry, WeightMeasurement } from "@/types";
-
-const DAY_LABELS = ["M", "T", "W", "T", "F", "S", "S"];
 
 const APPROACH_LABELS: Record<string, string> = {
   orange_base: "Orange Base",
@@ -128,80 +127,66 @@ function FoodPlanDetail({ plan }: { plan: WeeklyBasePlan | null }) {
   );
 }
 
+function formatCaloriesAverage(values: (number | true | null)[]): string {
+  const avg = averageCaloriesMetric(values);
+  if (avg == null) return "—";
+  return Math.round(avg).toLocaleString();
+}
+
 function TrackerDetail({ tracker }: { tracker: WeeklyTrackerEntry | null }) {
   if (!tracker) return <EmptyState />;
 
-  const habitRows = tracker.habits.filter(
-    (h) => h.name.trim().length > 0 || h.days.some(Boolean),
-  );
+  const nonNegotiables = (tracker.non_negotiables ?? [])
+    .map((n) => n.trim())
+    .filter((n) => n.length > 0);
   const metrics = tracker.daily_metrics;
+  const workoutDays =
+    metrics.workout?.filter((v) => v === true).length ?? 0;
   const wentWell = tracker.went_well?.trim();
   const adjustNext = tracker.adjust_next?.trim();
   const hasSundayNotes = Boolean(wentWell || adjustNext);
 
   return (
     <div>
-      {habitRows.length > 0 && (
+      {nonNegotiables.length > 0 && (
         <>
           <p className="mb-2 text-[11px] font-bold uppercase tracking-wide text-muted">
             Non-Negotiables
           </p>
-          <div className="mb-4 grid grid-cols-[minmax(76px,1.3fr)_repeat(7,minmax(0,1fr))] items-center gap-x-0.5 gap-y-1">
-            <div />
-            {DAY_LABELS.map((d, i) => (
-              <div
-                key={`day-${i}`}
-                className="text-center text-[9.5px] font-extrabold tracking-wide text-muted"
+          <ul className="mb-4 flex flex-col gap-1">
+            {nonNegotiables.map((name, i) => (
+              <li
+                key={i}
+                className="text-[13px] font-semibold text-foreground"
               >
-                {d}
-              </div>
+                {name}
+              </li>
             ))}
-            {habitRows.map((habit, rowIdx) => (
-              <Fragment key={rowIdx}>
-                <div className="line-clamp-2 overflow-hidden pr-1.5 text-[11px] font-bold leading-tight text-foreground">
-                  {habit.name.trim() || "Not set"}
-                </div>
-                {habit.days.map((checked, dayIdx) => (
-                  <div
-                    key={dayIdx}
-                    className="flex justify-center py-0.5"
-                  >
-                    <div
-                      className={`flex h-[18px] w-[18px] items-center justify-center rounded-md ${
-                        checked
-                          ? "bg-brand-gradient"
-                          : "border border-border bg-background"
-                      }`}
-                    >
-                      {checked && (
-                        <CheckIcon className="h-2 w-2 text-white" />
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </Fragment>
-            ))}
-          </div>
+          </ul>
         </>
       )}
 
-      <div className="mb-4 grid grid-cols-2 gap-2.5 sm:grid-cols-4">
+      <div className="mb-4 grid grid-cols-2 gap-2.5 sm:grid-cols-3">
         <StatChip
           label="Avg Calories"
-          value={formatAverage(metrics.calories)}
+          value={formatCaloriesAverage(metrics.calories ?? [])}
           unit="kcal"
         />
         <StatChip
           label="Avg Protein"
-          value={formatAverage(metrics.protein)}
+          value={formatAverage(metrics.protein ?? [])}
           unit="g"
         />
-        <StatChip label="Avg Steps" value={formatAverage(metrics.steps)} />
         <StatChip
           label="Avg Water"
-          value={formatAverage(metrics.water, 1)}
+          value={formatAverage(metrics.water ?? [], 1)}
           unit="L"
         />
+        <StatChip
+          label="Avg Steps"
+          value={formatAverage(metrics.steps ?? [])}
+        />
+        <StatChip label="Workout" value={`${workoutDays}/7`} unit="days" />
       </div>
 
       <p className="mb-2 text-[11px] font-bold uppercase tracking-wide text-muted">
@@ -234,14 +219,29 @@ function MeasurementsDetail({
 }) {
   if (!measurement) return <EmptyState />;
 
-  const { stone, lbs } = stoneLbsFromTotal(measurement.weight);
+  const weightParts =
+    measurement.weight != null
+      ? stoneLbsFromTotal(measurement.weight)
+      : null;
 
   return (
     <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
-      <StatChip label="Weight" value={`${stone}st ${lbs}`} unit="lbs" />
-      <StatChip label="Waist" value={String(measurement.waist)} unit="in" />
-      <StatChip label="Hips" value={String(measurement.hips)} unit="in" />
-      <StatChip label="Chest" value={String(measurement.chest)} unit="in" />
+      {weightParts != null && (
+        <StatChip
+          label="Weight"
+          value={`${weightParts.stone}st ${weightParts.lbs}`}
+          unit="lbs"
+        />
+      )}
+      {measurement.waist != null && (
+        <StatChip label="Waist" value={String(measurement.waist)} unit="in" />
+      )}
+      {measurement.hips != null && (
+        <StatChip label="Hips" value={String(measurement.hips)} unit="in" />
+      )}
+      {measurement.chest != null && (
+        <StatChip label="Chest" value={String(measurement.chest)} unit="in" />
+      )}
       {measurement.arm != null && (
         <StatChip label="Arm" value={String(measurement.arm)} unit="in" />
       )}

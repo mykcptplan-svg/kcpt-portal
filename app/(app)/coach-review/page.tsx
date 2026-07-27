@@ -14,7 +14,6 @@ import { getWeeklyTracker } from "@/lib/api/tracker";
 import { countMealSlotsFilled } from "@/lib/planStats";
 import { createClient } from "@/lib/supabase/client";
 import {
-  countNonNegotiablesHit,
   countTrackerDaysLogged,
   findClosestEarlierMeasuredWeek,
 } from "@/lib/trackerStats";
@@ -231,7 +230,6 @@ export default function CoachReviewPage() {
   const isDetailLoading = active != null && detailLoading === active.id;
 
   const daysLogged = countTrackerDaysLogged(detail?.tracker ?? null);
-  const nonNegotiablesHit = countNonNegotiablesHit(detail?.tracker ?? null);
   const pct = Math.round((daysLogged / 7) * 100);
 
   const currentMeasurement = detail?.measurement ?? null;
@@ -242,7 +240,7 @@ export default function CoachReviewPage() {
         ] ?? null)
       : null;
   const weightDelta =
-    currentMeasurement != null && priorMeasurement != null
+    currentMeasurement?.weight != null && priorMeasurement?.weight != null
       ? currentMeasurement.weight - priorMeasurement.weight
       : null;
 
@@ -410,9 +408,6 @@ export default function CoachReviewPage() {
                       <p className="text-[13.5px] font-semibold text-foreground">
                         {daysLogged} of 7 days logged
                       </p>
-                      <p className="text-xs font-bold text-brand-orange-dark">
-                        {nonNegotiablesHit} non-negotiables hit
-                      </p>
                     </div>
                     <div className="h-2 overflow-hidden rounded-full bg-black/[0.07]">
                       <div
@@ -436,18 +431,31 @@ export default function CoachReviewPage() {
                       <p className="text-[13.5px] font-semibold text-foreground">
                         No entry this week
                       </p>
+                    ) : currentMeasurement.weight == null ? (
+                      <>
+                        <div className="mb-1.5 flex items-baseline gap-3">
+                          <span className="font-heading text-[26px] text-foreground">
+                            —
+                          </span>
+                        </div>
+                        <p className="text-xs font-medium text-muted">
+                          No weight logged
+                        </p>
+                      </>
                     ) : (
                       <>
                         <div className="mb-1.5 flex items-baseline gap-3">
                           <span className="font-heading text-[26px] text-foreground">
                             {currentMeasurement.weight}
                           </span>
-                          <span
-                            className="text-[13px] font-bold"
-                            style={{ color: deltaColor(weightDelta ?? 0) }}
-                          >
-                            {deltaLabel(weightDelta ?? 0)}
-                          </span>
+                          {weightDelta != null && (
+                            <span
+                              className="text-[13px] font-bold"
+                              style={{ color: deltaColor(weightDelta) }}
+                            >
+                              {deltaLabel(weightDelta)}
+                            </span>
+                          )}
                         </div>
                         <p className="text-xs font-medium text-muted">
                           Last logged {formatLastLogged(weekStart)}

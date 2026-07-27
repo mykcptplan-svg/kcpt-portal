@@ -9,6 +9,7 @@ import { getWeeklyBasePlan } from "@/lib/api/basePlan";
 import { getWeeklyTracker } from "@/lib/api/tracker";
 import { useProfile } from "@/lib/context/ProfileContext";
 import { createClient } from "@/lib/supabase/client";
+import { countTrackerDaysLogged } from "@/lib/trackerStats";
 import { formatWeekRange, getWeekStart } from "@/lib/week";
 
 function emailPrefix(email: string | undefined | null): string | null {
@@ -74,10 +75,7 @@ export default function Home() {
       }
 
       if (tracker) {
-        const daysLogged = Array.from({ length: 7 }, (_, day) =>
-          tracker.habits.some((habit) => habit.days[day]),
-        ).filter(Boolean).length;
-        setTrackerDaysLogged(daysLogged);
+        setTrackerDaysLogged(countTrackerDaysLogged(tracker));
       }
 
       setWeekLoading(false);

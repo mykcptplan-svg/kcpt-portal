@@ -16,8 +16,8 @@ Keep this file up to date as decisions evolve. Any AI agent (Cursor, Claude, or 
 
 - Tables: `profiles`, `weekly_base_plans`, `weekly_tracker_entries`, `weight_measurements`.
 - RLS policy pattern: members can only select/insert/update rows where `user_id = auth.uid()`. The coach/admin role (in `profiles.role`) can read all rows across all tables (read-only) for the Coach Review feature. Only `profiles.status` and `profiles.coach_review_enabled` are writable by the admin role, never member content tables directly. A BEFORE UPDATE trigger also blocks non-admins from changing `role`, `status`, or `coach_review_enabled` on their own row.
-- `WeeklyTrackerEntry.habits` shape: `{ name: string; days: boolean[] }[]` (`days` = 7 flags, Mon–Sun).
-- `WeeklyTrackerEntry.daily_metrics` shape: `{ calories, protein, steps, water }` — each a `(number | null)[]` of length 7 (Mon–Sun); unset days are `null`, not `0`.
+- `WeeklyTrackerEntry.non_negotiables` shape: `string[]` of length 3 (plain text goals; no per-day checks).
+- `WeeklyTrackerEntry.daily_metrics` (Pillars) shape: `{ calories, protein, water, steps, workout }` — each length 7 (Mon–Sun). `calories` is `(number | true | null)[]` (`true` = ticked without a number); `protein`/`water`/`steps` are `(number | null)[]`; `workout` is `(boolean | null)[]`. Unset days are `null`, not `0`.
 - `WeeklyBasePlan.evening_meals` shape: `{ day: string; meal: string; approach: "meal_bank" | "orange_base" | "own" }[]` (one entry per day of the week).
 - **Registration flow:** After invite + password setup, the new member’s `profiles` row is created by the `complete-registration` Edge Function (caller JWT + RLS), not by a direct supabase-js insert from the frontend — even though `profiles_insert_own` would allow it. Do not “simplify” this back to a client insert.
 

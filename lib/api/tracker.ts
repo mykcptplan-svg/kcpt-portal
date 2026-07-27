@@ -14,7 +14,7 @@
  *   await saveWeeklyTracker(
  *     {
  *       week_start: "2026-07-20",
- *       habits: [...],
+ *       non_negotiables: ["", "", ""],
  *       sunday_reset_done: false,
  *       went_well: null,
  *       adjust_next: null,

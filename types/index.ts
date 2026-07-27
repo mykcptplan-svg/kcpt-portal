@@ -23,24 +23,19 @@ export type WeeklyBasePlan = {
   evening_meals: EveningMealEntry[];
 };
 
-/** One habit; `days` is length 7: Mon…Sun completion flags */
-export type HabitDayStatus = {
-  name: string;
-  days: boolean[]; // 7 elements: Monday through Sunday
-};
-
-/** Daily numeric metrics; each array is length 7: Mon…Sun (null = unset) */
+/** Daily pillars; each array is length 7: Mon…Sun (null = unset) */
 export type DailyMetrics = {
-  calories: (number | null)[];
+  calories: (number | true | null)[];
   protein: (number | null)[];
-  steps: (number | null)[];
   water: (number | null)[];
+  steps: (number | null)[];
+  workout: (boolean | null)[];
 };
 
 export type WeeklyTrackerEntry = {
   user_id: string;
   week_start: string;
-  habits: HabitDayStatus[];
+  non_negotiables: string[];
   daily_metrics: DailyMetrics;
   sunday_reset_done: boolean;
   went_well: string | null;
@@ -50,10 +45,10 @@ export type WeeklyTrackerEntry = {
 export type WeightMeasurement = {
   user_id: string;
   week_start: string;
-  weight: number;
-  waist: number;
-  hips: number;
-  chest: number;
+  weight: number | null;
+  waist: number | null;
+  hips: number | null;
+  chest: number | null;
   arm: number | null;
   thigh: number | null;
   calve: number | null;
