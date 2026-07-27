@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import AutosaveStatus from "@/components/AutosaveStatus";
 import HeartLoader from "@/components/HeartLoader";
+import TipsCard from "@/components/measurements/TipsCard";
 import { ChartIcon, RulerIcon } from "@/components/icons";
 import { getWeeksList } from "@/lib/api/history";
 import {
@@ -18,10 +19,10 @@ type MetricKey = "weight" | "waist" | "hips" | "chest";
 
 type Entry = {
   week_start: string;
-  weight: number;
-  waist: number;
-  hips: number;
-  chest: number;
+  weight: number | null;
+  waist: number | null;
+  hips: number | null;
+  chest: number | null;
 };
 
 type FormState = {
@@ -83,13 +84,14 @@ function emptyExtraForm(): ExtraFormState {
 
 function formFromEntry(entry: Entry | null | undefined): FormState {
   if (!entry) return emptyForm();
-  const { stone, lbs } = stoneLbsFromTotal(entry.weight);
+  const weightParts =
+    entry.weight != null ? stoneLbsFromTotal(entry.weight) : null;
   return {
-    stone: String(stone),
-    lbs: String(lbs),
-    waist: String(entry.waist),
-    hips: String(entry.hips),
-    chest: String(entry.chest),
+    stone: weightParts != null ? String(weightParts.stone) : "",
+    lbs: weightParts != null ? String(weightParts.lbs) : "",
+    waist: entry.waist != null ? String(entry.waist) : "",
+    hips: entry.hips != null ? String(entry.hips) : "",
+    chest: entry.chest != null ? String(entry.chest) : "",
   };
 }
 
@@ -104,10 +106,10 @@ function extraFormFromEntry(row: WeightMeasurement | null): ExtraFormState {
 
 function entryFromRow(row: {
   week_start: string;
-  weight: number;
-  waist: number;
-  hips: number;
-  chest: number;
+  weight: number | null;
+  waist: number | null;
+  hips: number | null;
+  chest: number | null;
 }): Entry {
   return {
     week_start: row.week_start,
@@ -231,33 +233,43 @@ export default function MeasurementsPage() {
       const waist = parsePositive(value.waist);
       const hips = parsePositive(value.hips);
       const chest = parsePositive(value.chest);
+      const arm = parsePositive(value.arm);
+      const thigh = parsePositive(value.thigh);
+      const calve = parsePositive(value.calve);
 
-      // Edge requires all four metrics to be positive — skip incomplete drafts.
-      if (
-        weight === null ||
-        weight <= 0 ||
-        waist === null ||
-        hips === null ||
-        chest === null
-      ) {
+      const hasAny =
+        (weight != null && weight > 0) ||
+        waist != null ||
+        hips != null ||
+        chest != null ||
+        arm != null ||
+        thigh != null ||
+        calve != null;
+      if (!hasAny) {
         return false;
       }
 
       await saveWeightMeasurement(
         {
           week_start: weekStart,
-          weight,
+          weight: weight != null && weight > 0 ? weight : null,
           waist,
           hips,
           chest,
-          arm: parsePositive(value.arm),
-          thigh: parsePositive(value.thigh),
-          calve: parsePositive(value.calve),
+          arm,
+          thigh,
+          calve,
         },
         accessToken,
       );
 
-      const saved: Entry = { week_start: weekStart, weight, waist, hips, chest };
+      const saved: Entry = {
+        week_start: weekStart,
+        weight: weight != null && weight > 0 ? weight : null,
+        waist,
+        hips,
+        chest,
+      };
       setEntries((prev) => {
         const idx = prev.findIndex((e) => e.week_start === weekStart);
         if (idx === -1) {
@@ -277,30 +289,34 @@ export default function MeasurementsPage() {
   const showForm = !hasSavedEntry || isEditing || startedEmptyRef.current;
 
   const chart = useMemo(() => {
-    if (entries.length === 0) {
-      return {
-        points: [] as { x: number; y: number; dateLabel: string }[],
-        linePath: "",
-        areaPath: "",
-        gridLines: [0, 0.5, 1].map(
-          (t) => PAD_TOP + t * (CHART_H - PAD_TOP - PAD_BOTTOM),
-        ),
-        current: 0,
-        delta: 0,
-      };
+    const empty = {
+      points: [] as { x: number; y: number; dateLabel: string }[],
+      linePath: "",
+      areaPath: "",
+      gridLines: [0, 0.5, 1].map(
+        (t) => PAD_TOP + t * (CHART_H - PAD_TOP - PAD_BOTTOM),
+      ),
+      current: 0,
+      delta: 0,
+    };
+
+    const chartEntries = entries.filter((e) => e[activeMetric] != null);
+    if (chartEntries.length === 0) {
+      return empty;
     }
 
-    const values = entries.map((e) => e[activeMetric]);
+    const values = chartEntries.map((e) => e[activeMetric] as number);
     const min = Math.min(...values);
     const max = Math.max(...values);
     const range = max - min || 1;
     const n = values.length;
 
-    const points = entries.map((e, i) => {
+    const points = chartEntries.map((e, i) => {
       const x = n === 1 ? CHART_W / 2 : PAD_X + (i * (CHART_W - 2 * PAD_X)) / (n - 1);
       const y =
         PAD_TOP +
-        (1 - (e[activeMetric] - min) / range) * (CHART_H - PAD_TOP - PAD_BOTTOM);
+        (1 - ((e[activeMetric] as number) - min) / range) *
+          (CHART_H - PAD_TOP - PAD_BOTTOM);
       return { x, y, dateLabel: formatChartLabel(e.week_start) };
     });
 
@@ -339,11 +355,23 @@ export default function MeasurementsPage() {
           Weight &amp; Measurements
         </h1>
         <p className="mt-0.5 font-script text-xl font-bold text-brand-orange-dark">
-          Progress you can see.
+          Track more than just your weight.
         </p>
       </div>
 
       <AutosaveStatus status={status} />
+
+      <TipsCard
+        title="Weight Tips"
+        intro="If you're going to weigh yourself, here's how to get the most accurate picture of your progress:"
+        items={[
+          "Weigh yourself on Monday and Friday mornings.",
+          "Weigh yourself after a wee, before eating or drinking, naked.",
+          "Use the same scales in the same spot in the house every time.",
+          "Your weight will fluctuate from day to day, and that's completely normal. They are not an indication of body fat.",
+          "Assess your progress over time, not from one weigh-in or even one week. Always look at the overall trend rather than individual numbers.",
+        ]}
+      />
 
       {/* This week's entry — log or read-only */}
       <section className="rounded-[20px] border border-border bg-card p-5 shadow-[0_12px_26px_-18px_rgba(17,17,17,0.16)]">
@@ -460,6 +488,25 @@ export default function MeasurementsPage() {
         </div>
       </section>
 
+      <TipsCard
+        title="Body Measurement Tips"
+        items={[
+          "Take your body measurements every 4 weeks, not every week.",
+          "Use the same tape measure and measure the same areas each time.",
+          "Record your measurements in inches (or centimetres, depending on the unit you choose).",
+        ]}
+      />
+
+      <TipsCard
+        title="Other Great Ways to Measure Progress"
+        intro="Remember, the scales are only one way to measure progress."
+        items={[
+          "Progress photos are a fantastic way to see changes over time.",
+          "My favourite way to measure progress is by choosing one favourite item of clothing and trying it on every couple of weeks. Often you'll notice your clothes fitting differently before you see a big change on the scales.",
+          "Pay attention to how you feel, your energy levels, your strength and your confidence too.",
+        ]}
+      />
+
       {/* Trend */}
       <section className="rounded-[20px] border border-border bg-card p-5 shadow-[0_12px_26px_-18px_rgba(17,17,17,0.16)]">
         <div className="mb-4 flex items-center gap-3">
@@ -491,9 +538,10 @@ export default function MeasurementsPage() {
           })}
         </div>
 
-        {entries.length === 0 ? (
+        {chart.points.length === 0 ? (
           <p className="text-sm text-muted">
-            No measurements yet. Fill in this week&apos;s entry to start your trend.
+            No {metricLabel.toLowerCase()} measurements yet. Log this metric to
+            start your trend.
           </p>
         ) : (
           <>

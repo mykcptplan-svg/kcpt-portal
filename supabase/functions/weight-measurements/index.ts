@@ -176,36 +176,48 @@ Deno.serve(async (req: Request) => {
     );
   }
 
-  for (const field of ["weight", "waist", "hips", "chest"] as const) {
-    const fieldError = validatePositiveNumber(record[field], field);
-    if (fieldError) {
-      return jsonResponse({ error: fieldError }, 400);
-    }
-  }
-
-  const optionalMetrics: Record<"arm" | "thigh" | "calve", number | null> = {
+  const metrics: Record<
+    "weight" | "waist" | "hips" | "chest" | "arm" | "thigh" | "calve",
+    number | null
+  > = {
+    weight: null,
+    waist: null,
+    hips: null,
+    chest: null,
     arm: null,
     thigh: null,
     calve: null,
   };
-  for (const field of ["arm", "thigh", "calve"] as const) {
+
+  for (const field of [
+    "weight",
+    "waist",
+    "hips",
+    "chest",
+    "arm",
+    "thigh",
+    "calve",
+  ] as const) {
     const raw = record[field];
     if (raw === undefined || raw === null) {
-      optionalMetrics[field] = null;
+      metrics[field] = null;
       continue;
     }
     const fieldError = validatePositiveNumber(raw, field);
     if (fieldError) {
       return jsonResponse({ error: fieldError }, 400);
     }
-    optionalMetrics[field] = raw as number;
+    metrics[field] = raw as number;
+  }
+
+  if (Object.values(metrics).every((v) => v === null)) {
+    return jsonResponse(
+      { error: "At least one measurement is required" },
+      400,
+    );
   }
 
   const week_start = record.week_start;
-  const weight = record.weight as number;
-  const waist = record.waist as number;
-  const hips = record.hips as number;
-  const chest = record.chest as number;
 
   const { error: upsertError } = await callerClient
     .from("weight_measurements")
@@ -213,13 +225,13 @@ Deno.serve(async (req: Request) => {
       {
         user_id: user.id,
         week_start,
-        weight,
-        waist,
-        hips,
-        chest,
-        arm: optionalMetrics.arm,
-        thigh: optionalMetrics.thigh,
-        calve: optionalMetrics.calve,
+        weight: metrics.weight,
+        waist: metrics.waist,
+        hips: metrics.hips,
+        chest: metrics.chest,
+        arm: metrics.arm,
+        thigh: metrics.thigh,
+        calve: metrics.calve,
       },
       { onConflict: "user_id,week_start" },
     );

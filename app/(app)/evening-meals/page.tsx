@@ -163,8 +163,8 @@ export default function EveningMealsPage() {
       </div>
 
       <p className="text-[13px] font-medium leading-relaxed text-muted">
-        Tap a day to log tonight&apos;s meal and how you&apos;re approaching it.
-        Everything saves automatically.
+        Tap to log your evening meals and how you&apos;ll approach them this
+        week. Everything saves automatically.
       </p>
 
       <AutosaveStatus status={status} />

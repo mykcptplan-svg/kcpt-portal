@@ -69,6 +69,9 @@ function measurementSummary(
     ? measurementByWeek[priorWeek.week_start]
     : undefined;
   if (prior == null) return "Logged this week";
+  if (detail.measurement.weight == null || prior.weight == null) {
+    return "Logged this week";
+  }
   const delta = detail.measurement.weight - prior.weight;
   const formatted = `${delta > 0 ? "+" : ""}${delta.toFixed(1)}`;
   return `Logged · ${formatted} since last week`;

@@ -3,7 +3,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import MealSectionCard from "@/components/plan/MealSectionCard";
-import NutritionApproachToggle from "@/components/plan/NutritionApproachToggle";
 import AutosaveStatus from "@/components/AutosaveStatus";
 import HeartLoader from "@/components/HeartLoader";
 import {
@@ -13,6 +12,7 @@ import {
   DessertIcon,
   LunchIcon,
   TriggerSnackIcon,
+  UtensilsIcon,
 } from "@/components/icons";
 import { getWeeklyBasePlan, saveWeeklyBasePlan } from "@/lib/api/basePlan";
 import { useProfile } from "@/lib/context/ProfileContext";
@@ -147,12 +147,6 @@ export default function PlanPage() {
 
       <AutosaveStatus status={status} />
 
-      <NutritionApproachToggle
-        value={nutritionApproach}
-        onChange={setNutritionApproach}
-        disabled={isRevoked}
-      />
-
       <div className="grid gap-4 sm:grid-cols-2">
         <MealSectionCard
           title="Breakfasts"
@@ -179,7 +173,7 @@ export default function PlanPage() {
         />
 
         <MealSectionCard
-          title="Trigger Snacks"
+          title="Trigger Time Snacks"
           idPrefix="trigger-snack"
           icon={<TriggerSnackIcon className="h-[17px] w-[17px]" />}
           values={triggerSnacks}
@@ -209,10 +203,20 @@ export default function PlanPage() {
 
       <Link
         href="/evening-meals"
-        className="flex items-center gap-1 text-xs font-bold text-brand-orange-dark"
+        className="flex items-center gap-3.5 rounded-[18px] border border-border bg-card p-4 shadow-[0_12px_26px_-18px_rgba(17,17,17,0.16)] transition-colors hover:border-brand-orange/40"
       >
-        Evening Meals
-        <ArrowRightIcon className="h-3.5 w-3.5" />
+        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-brand-gradient text-white">
+          <UtensilsIcon className="h-4 w-4" />
+        </span>
+        <div className="flex-1">
+          <p className="text-sm font-bold text-foreground">Evening Meals</p>
+          <p className="mt-0.5 text-[12.5px] text-muted">
+            Plan each night&apos;s meal for the week
+          </p>
+        </div>
+        <span className="flex items-center gap-1 whitespace-nowrap text-xs font-bold text-brand-orange-dark">
+          Open <ArrowRightIcon className="h-3.5 w-3.5" />
+        </span>
       </Link>
 
       <div className="flex gap-3.5 rounded-[18px] border border-tip-border bg-tip-bg p-[18px]">

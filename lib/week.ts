@@ -1,7 +1,7 @@
 /**
  * Monday–Sunday week helpers (local time).
  *
- * Matches HabitDayStatus.days: 7 flags Monday through Sunday, with
+ * Pillar / metric day arrays are 7 flags Monday through Sunday, with
  * week_start as the Monday of that week (YYYY-MM-DD).
  *
  * No external dependencies (no date-fns) — plain Date math only, to keep
