@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 
 export type PillarEntryMetric = "calories" | "protein" | "water" | "steps";
 
@@ -35,6 +35,32 @@ export default function PillarEntrySheet({
   const inputRef = useRef<HTMLInputElement>(null);
   const meta = METRIC_META[metric];
   const inputValue = typeof value === "number" ? String(value) : "";
+  const [viewportOffset, setViewportOffset] = useState<{
+    top: number;
+    height: number;
+  } | null>(null);
+
+  useEffect(() => {
+    const vv = window.visualViewport;
+    if (!vv) return;
+
+    function sync() {
+      const viewport = window.visualViewport;
+      if (!viewport) return;
+      setViewportOffset({
+        top: viewport.offsetTop,
+        height: viewport.height,
+      });
+    }
+
+    sync();
+    vv.addEventListener("resize", sync);
+    vv.addEventListener("scroll", sync);
+    return () => {
+      vv.removeEventListener("resize", sync);
+      vv.removeEventListener("scroll", sync);
+    };
+  }, []);
 
   useEffect(() => {
     const input = inputRef.current;
@@ -66,8 +92,21 @@ export default function PillarEntrySheet({
     };
   }, [onClose]);
 
+  const usingVisualViewport = viewportOffset !== null;
+
   return (
-    <div className="fixed inset-0 z-[60] flex min-h-dvh items-end justify-center">
+    <div
+      className={
+        usingVisualViewport
+          ? "fixed left-0 right-0 z-[60] flex items-end justify-center"
+          : "fixed inset-0 z-[60] flex min-h-dvh items-end justify-center"
+      }
+      style={
+        viewportOffset
+          ? { top: viewportOffset.top, height: viewportOffset.height }
+          : undefined
+      }
+    >
       <div className="absolute inset-0 bg-foreground/40" aria-hidden />
       <div
         ref={panelRef}
