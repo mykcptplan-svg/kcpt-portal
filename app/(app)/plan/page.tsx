@@ -147,6 +147,12 @@ export default function PlanPage() {
 
       <AutosaveStatus status={status} />
 
+      <p className="text-[12px] font-medium leading-snug text-muted">
+        Your food plan is saved automatically. Every Monday you can create a
+        fresh plan for the week ahead, and you can view your previous plans
+        anytime in your History.
+      </p>
+
       <div className="grid gap-4 sm:grid-cols-2">
         <MealSectionCard
           title="Breakfasts"
@@ -228,8 +234,10 @@ export default function PlanPage() {
             KCPT Tip
           </p>
           <p className="mt-1 text-[13.5px] font-semibold leading-relaxed text-foreground">
-            Your food plan doesn&apos;t need to be fancy — just repeatable.
-            Pick meals you&apos;ll actually make again and again.
+            Your food plan doesn&apos;t need to be fancy - especially on busy
+            weekdays. Repeatable meals are a smart way to reduce overwhelm.
+            Pick meals you genuinely enjoy, and you&apos;ll be far more
+            consistent.
           </p>
         </div>
       </div>
