@@ -313,6 +313,13 @@ export default function TrackerPage() {
 
       {/* Pillars grid */}
       <section className="rounded-[20px] border border-border bg-card px-4 pt-6 pb-5 shadow-[0_12px_26px_-18px_rgba(17,17,17,0.16)]">
+        <div className="mb-4 flex gap-3.5 rounded-[18px] border border-tip-border bg-tip-bg p-[18px]">
+          <p className="text-[13.5px] font-semibold leading-relaxed text-foreground">
+            Remember… Consistency doesn&apos;t come from perfection. It comes from
+            repeating the basics, week after week. Some boxes won&apos;t get ticked
+            — and that&apos;s okay. What matters is that you keep showing up 🧡
+          </p>
+        </div>
         <div className="grid grid-cols-[minmax(78px,1fr)_repeat(7,minmax(0,1fr))] items-center gap-x-0 gap-y-2">
           <div />
           {DAY_LABELS.map((d, i) => {
@@ -474,12 +481,11 @@ export default function TrackerPage() {
         </div>
 
         <p className="mb-4 text-[13.5px] font-semibold leading-relaxed text-foreground">
-          Reflect. Reset. Plan. Complete your Sunday Reset in the KCPT App, build
-          your new Food Plan and get ready for another successful week.
+          Take a minute to look back on your week before starting a new one.
         </p>
 
         <p className="mb-2 text-[11px] font-bold uppercase tracking-wide text-muted">
-          What went well this week?
+          What went well this week that you want to repeat?
         </p>
         <textarea
           value={wentWell}
@@ -491,7 +497,7 @@ export default function TrackerPage() {
         />
 
         <p className="mb-2 mt-4 text-[11px] font-bold uppercase tracking-wide text-muted">
-          What will you adjust next week?
+          What would you like to improve next week?
         </p>
         <textarea
           value={adjustNext}
@@ -501,15 +507,13 @@ export default function TrackerPage() {
           disabled={isRevoked}
           className="w-full resize-none rounded-[10px] border border-border bg-background px-[13px] py-3 text-[13.5px] text-foreground outline-none focus:border-brand-orange disabled:cursor-not-allowed disabled:opacity-60"
         />
-      </section>
 
-      <div className="flex gap-3.5 rounded-[18px] border border-tip-border bg-tip-bg p-[18px]">
-        <p className="text-[13.5px] font-semibold leading-relaxed text-foreground">
-          Remember… Consistency doesn&apos;t come from perfection. It comes from
-          repeating the basics, week after week. Some boxes won&apos;t get ticked
-          and that&apos;s okay! Just keep showing up. 🧡
+        <p className="mt-4 text-[12px] font-medium leading-snug text-muted">
+          Your progress is saved automatically. Every Monday your Success Tracker
+          starts fresh for a new week. You can view all of your previous weeks at
+          any time in your History.
         </p>
-      </div>
+      </section>
 
       {(loadError || saveError) && (
         <p className="text-xs text-brand-orange-dark">{loadError ?? saveError}</p>
@@ -527,8 +531,8 @@ export default function TrackerPage() {
         <div className="flex-1">
           <p className="text-sm font-bold text-foreground">Sunday Reset</p>
           <p className="mt-0.5 text-[12.5px] text-muted">
-            Want to go deeper? Complete the full Sunday Reset in your coaching
-            app (optional).
+            Want to go a little deeper? Complete your optional Sunday Reset in the
+            KCPT App to reflect, reset and plan for the week ahead.
           </p>
         </div>
         <span className="flex items-center gap-1 whitespace-nowrap text-xs font-bold text-brand-orange-dark">
