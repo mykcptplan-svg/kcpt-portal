@@ -53,3 +53,21 @@ export function averageCaloriesMetric(
   if (present.length === 0) return null;
   return present.reduce((sum, v) => sum + v, 0) / present.length;
 }
+
+/** Compact glance text for large day totals (e.g. 8500 → "8.5k"). */
+export function formatAbbreviated(value: number): string {
+  if (value >= 1000) {
+    const rounded = Math.round(value / 100) / 10;
+    return `${rounded % 1 === 0 ? rounded.toFixed(0) : rounded.toFixed(1)}k`;
+  }
+  return String(value);
+}
+
+/** Grid display for a numeric pillar cell. Water never uses k-abbreviation (litres). */
+export function formatPillarCellValue(
+  metric: "calories" | "protein" | "water" | "steps",
+  value: number,
+): string {
+  if (metric === "water") return String(value);
+  return formatAbbreviated(value);
+}

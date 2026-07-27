@@ -8,15 +8,28 @@ import {
   CheckIcon,
   RefreshIcon,
 } from "@/components/icons";
+import PillarEntrySheet, {
+  type PillarEntryMetric,
+} from "@/components/tracker/PillarEntrySheet";
 import PillarInfoButton from "@/components/tracker/PillarInfoButton";
 import { getWeeklyTracker, saveWeeklyTracker } from "@/lib/api/tracker";
 import { useProfile } from "@/lib/context/ProfileContext";
 import { useDebouncedSave } from "@/lib/hooks/useDebouncedSave";
 import { createClient } from "@/lib/supabase/client";
+import { formatPillarCellValue } from "@/lib/trackerStats";
 import { getWeekStart } from "@/lib/week";
 import type { DailyMetrics } from "@/types";
 
 const DAY_LABELS = ["M", "T", "W", "T", "F", "S", "S"];
+const DAY_NAMES = [
+  "Monday",
+  "Tuesday",
+  "Wednesday",
+  "Thursday",
+  "Friday",
+  "Saturday",
+  "Sunday",
+] as const;
 
 const HABIT_PLACEHOLDERS = [
   "In bed by 11pm",
@@ -27,10 +40,9 @@ const HABIT_PLACEHOLDERS = [
 const NUMERIC_PILLAR_ROWS: {
   key: "protein" | "water" | "steps";
   label: string;
-  step?: string;
 }[] = [
   { key: "protein", label: "Protein (g)" },
-  { key: "water", label: "Water (L)", step: "0.1" },
+  { key: "water", label: "Water (L)" },
   { key: "steps", label: "Steps" },
 ];
 
@@ -113,6 +125,10 @@ export default function TrackerPage() {
   const [adjustNext, setAdjustNext] = useState("");
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [activeCell, setActiveCell] = useState<{
+    metric: PillarEntryMetric;
+    dayIdx: number;
+  } | null>(null);
   const accessTokenRef = useRef<string | null>(null);
 
   useEffect(() => {
@@ -182,10 +198,10 @@ export default function TrackerPage() {
     });
   }
 
-  function toggleCalorieTick(dayIdx: number) {
+  function markCalorieEaten(dayIdx: number) {
     setDailyMetrics((prev) => {
       const nextRow = prev.calories.slice();
-      nextRow[dayIdx] = nextRow[dayIdx] === true ? null : true;
+      nextRow[dayIdx] = true;
       return { ...prev, calories: nextRow };
     });
   }
@@ -297,109 +313,101 @@ export default function TrackerPage() {
 
       {/* Pillars grid */}
       <section className="rounded-[20px] border border-border bg-card px-4 pt-6 pb-5 shadow-[0_12px_26px_-18px_rgba(17,17,17,0.16)]">
-        <div className="grid grid-cols-[minmax(100px,1.4fr)_repeat(7,minmax(0,1fr))] items-center gap-x-0.5 gap-y-2">
+        <div className="grid grid-cols-[minmax(78px,1fr)_repeat(7,minmax(0,1fr))] items-center gap-x-0 gap-y-2">
           <div />
-          {DAY_LABELS.map((d, i) => (
-            <div
-              key={`metric-day-${d}-${i}`}
-              className="text-center text-[10.5px] font-extrabold tracking-wide text-muted"
-            >
-              {d}
-            </div>
-          ))}
-
-          {/* Calories — hybrid number | tick (single-height cell) */}
-          <div className="flex items-center gap-1 pr-1.5 text-xs font-bold leading-tight text-foreground">
-            Calories (kcal)
-            <PillarInfoButton label="Calories" text={PILLAR_INFO.calories} />
-          </div>
-          {dailyMetrics.calories.map((value, dayIdx) => {
-            const ticked = value === true;
-            const hasNumber = typeof value === "number";
+          {DAY_LABELS.map((d, i) => {
+            const isActiveDay = activeCell?.dayIdx === i;
             return (
               <div
-                key={`calories-${dayIdx}`}
-                className="flex justify-center"
+                key={`metric-day-${d}-${i}`}
+                className={`text-center text-[10.5px] font-extrabold tracking-wide ${
+                  isActiveDay
+                    ? "rounded-md ring-1 ring-brand-orange text-brand-orange"
+                    : "text-muted"
+                }`}
               >
-                {ticked ? (
-                  <button
-                    type="button"
-                    onClick={() => toggleCalorieTick(dayIdx)}
-                    aria-pressed
-                    aria-label={`Calories tick — ${DAY_LABELS[dayIdx]}`}
-                    disabled={isRevoked}
-                    className={`flex h-[34px] w-full min-w-0 max-w-[68px] items-center justify-center rounded-lg bg-brand-gradient transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
-                      isRevoked ? "" : "cursor-pointer"
-                    }`}
-                  >
-                    <CheckIcon className="h-3.5 w-3.5 text-white" />
-                  </button>
-                ) : (
-                  <div className="relative h-[34px] w-full min-w-0 max-w-[68px]">
-                    <input
-                      type="number"
-                      inputMode="decimal"
-                      min={0}
-                      value={hasNumber ? value : ""}
-                      onChange={(e) => setCalorieNumber(dayIdx, e.target.value)}
-                      aria-label={`Calories — ${DAY_LABELS[dayIdx]}`}
-                      disabled={isRevoked}
-                      className={`h-full w-full rounded-lg pl-5 pr-1 text-center text-[11px] outline-none disabled:cursor-not-allowed disabled:opacity-60 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none ${
-                        hasNumber
-                          ? "border border-transparent bg-brand-gradient text-white focus:ring-1 focus:ring-white/40"
-                          : "border border-foreground/25 bg-background text-foreground focus:border-brand-orange"
-                      }`}
-                    />
-                    <button
-                      type="button"
-                      onClick={() => toggleCalorieTick(dayIdx)}
-                      aria-pressed={false}
-                      aria-label={`Calories tick — ${DAY_LABELS[dayIdx]}`}
-                      disabled={isRevoked}
-                      className={`absolute inset-y-0 left-0 flex w-[22px] items-center justify-center rounded-l-lg transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
-                        isRevoked ? "" : "cursor-pointer"
-                      }`}
-                    >
-                      <span
-                        className={`h-2.5 w-2.5 rounded-full border ${
-                          hasNumber ? "border-white" : "border-muted"
-                        }`}
-                        aria-hidden
-                      />
-                    </button>
-                  </div>
-                )}
+                {d}
               </div>
             );
           })}
 
-          {NUMERIC_PILLAR_ROWS.map(({ key, label, step }) => (
+          {/* Calories */}
+          <div className="flex w-full items-center justify-between gap-1 pr-1.5 text-xs font-bold leading-tight text-foreground">
+            <span>Calories (kcal)</span>
+            <PillarInfoButton label="Calories" text={PILLAR_INFO.calories} />
+          </div>
+          {dailyMetrics.calories.map((value, dayIdx) => {
+            const filled = value != null;
+            const ticked = value === true;
+            const isActive =
+              activeCell?.metric === "calories" && activeCell.dayIdx === dayIdx;
+            return (
+              <div key={`calories-${dayIdx}`} className="flex justify-center">
+                <button
+                  type="button"
+                  onClick={() =>
+                    setActiveCell({ metric: "calories", dayIdx })
+                  }
+                  aria-label={`Calories — ${DAY_LABELS[dayIdx]}`}
+                  disabled={isRevoked}
+                  className={`flex h-[34px] w-full min-w-0 max-w-[68px] items-center justify-center rounded-lg text-[11px] font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
+                    isRevoked ? "" : "cursor-pointer"
+                  } ${
+                    filled
+                      ? "bg-brand-gradient text-white"
+                      : "border border-foreground/25 bg-background text-muted"
+                  } ${isActive ? "ring-2 ring-brand-orange ring-offset-1 ring-offset-card" : ""}`}
+                >
+                  {ticked ? (
+                    <CheckIcon className="h-3.5 w-3.5 text-white" />
+                  ) : typeof value === "number" ? (
+                    formatPillarCellValue("calories", value)
+                  ) : (
+                    "–"
+                  )}
+                </button>
+              </div>
+            );
+          })}
+
+          {NUMERIC_PILLAR_ROWS.map(({ key, label }) => (
             <Fragment key={key}>
-              <div className="flex items-center gap-1 pr-1.5 text-xs font-bold leading-tight text-foreground">
-                {label}
+              <div className="flex w-full items-center justify-between gap-1 pr-1.5 text-xs font-bold leading-tight text-foreground">
+                <span>{label}</span>
                 <PillarInfoButton label={label} text={PILLAR_INFO[key]} />
               </div>
-              {dailyMetrics[key].map((value, dayIdx) => (
-                <div key={`${key}-${dayIdx}`} className="flex justify-center">
-                  <input
-                    type="number"
-                    inputMode="decimal"
-                    min={0}
-                    step={step}
-                    value={value ?? ""}
-                    onChange={(e) => setNumericCell(key, dayIdx, e.target.value)}
-                    aria-label={`${label} — ${DAY_LABELS[dayIdx]}`}
-                    disabled={isRevoked}
-                    className="h-[34px] w-full min-w-0 max-w-[48px] rounded-lg border border-foreground/25 bg-background px-1 text-center text-[11px] text-foreground outline-none focus:border-brand-orange disabled:cursor-not-allowed disabled:opacity-60 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
-                  />
-                </div>
-              ))}
+              {dailyMetrics[key].map((value, dayIdx) => {
+                const filled = value != null;
+                const isActive =
+                  activeCell?.metric === key && activeCell.dayIdx === dayIdx;
+                return (
+                  <div key={`${key}-${dayIdx}`} className="flex justify-center">
+                    <button
+                      type="button"
+                      onClick={() => setActiveCell({ metric: key, dayIdx })}
+                      aria-label={`${label} — ${DAY_LABELS[dayIdx]}`}
+                      disabled={isRevoked}
+                      className={`flex h-[34px] w-full min-w-0 max-w-[68px] items-center justify-center rounded-lg text-[11px] font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
+                        isRevoked ? "" : "cursor-pointer"
+                      } ${
+                        filled
+                          ? "bg-brand-gradient text-white"
+                          : "border border-foreground/25 bg-background text-muted"
+                      } ${isActive ? "ring-2 ring-brand-orange ring-offset-1 ring-offset-card" : ""}`}
+                    >
+                      {typeof value === "number"
+                        ? formatPillarCellValue(key, value)
+                        : "–"}
+                    </button>
+                  </div>
+                );
+              })}
             </Fragment>
           ))}
 
           {/* Workout — checkboxes */}
-          <div className="flex items-center gap-1 pr-1.5 text-xs font-bold leading-tight text-foreground">
-            Workout
+          <div className="flex w-full items-center justify-between gap-1 pr-1.5 text-xs font-bold leading-tight text-foreground">
+            <span>Workout</span>
             <PillarInfoButton label="Workout" text={PILLAR_INFO.workout} />
           </div>
           {dailyMetrics.workout.map((value, dayIdx) => {
@@ -427,6 +435,32 @@ export default function TrackerPage() {
           })}
         </div>
       </section>
+
+      {activeCell && (
+        <PillarEntrySheet
+          metric={activeCell.metric}
+          dayName={DAY_NAMES[activeCell.dayIdx]}
+          value={
+            activeCell.metric === "calories"
+              ? dailyMetrics.calories[activeCell.dayIdx]
+              : dailyMetrics[activeCell.metric][activeCell.dayIdx]
+          }
+          disabled={isRevoked}
+          onClose={() => setActiveCell(null)}
+          onNumberChange={(raw) => {
+            if (activeCell.metric === "calories") {
+              setCalorieNumber(activeCell.dayIdx, raw);
+            } else {
+              setNumericCell(activeCell.metric, activeCell.dayIdx, raw);
+            }
+          }}
+          onMarkEatenWell={
+            activeCell.metric === "calories"
+              ? () => markCalorieEaten(activeCell.dayIdx)
+              : undefined
+          }
+        />
+      )}
 
       {/* End of Week Reflection */}
       <section className="rounded-[20px] border border-border bg-card p-5 shadow-[0_12px_26px_-18px_rgba(17,17,17,0.16)]">
