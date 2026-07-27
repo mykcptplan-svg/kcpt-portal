@@ -385,7 +385,7 @@ export default function MeasurementsPage() {
         title="Other Great Ways to Measure Progress"
         intro="Remember, the scales are only one way to measure progress."
         items={[
-          "Progress photos are a fantastic way to see changes over time.",
+          "Progress photos are a fantastic way to see changes over time — take them every 4 weeks, alongside your measurements.",
           "My favourite way to measure progress is by choosing one favourite item of clothing and trying it on every couple of weeks. Often you'll notice your clothes fitting differently before you see a big change on the scales.",
           "Pay attention to how you feel, your energy levels, your strength and your confidence too.",
         ]}

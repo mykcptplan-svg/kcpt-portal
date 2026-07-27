@@ -228,7 +228,7 @@ export default function PlanPage() {
             KCPT Tip
           </p>
           <p className="mt-1 text-[13.5px] font-semibold leading-relaxed text-foreground">
-            Your base plan doesn&apos;t need to be fancy — just repeatable.
+            Your food plan doesn&apos;t need to be fancy — just repeatable.
             Pick meals you&apos;ll actually make again and again.
           </p>
         </div>
