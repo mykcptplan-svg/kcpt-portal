@@ -37,8 +37,11 @@ export default function PillarEntrySheet({
   const inputValue = typeof value === "number" ? String(value) : "";
 
   useEffect(() => {
-    inputRef.current?.focus();
-    inputRef.current?.select();
+    const input = inputRef.current;
+    if (!input) return;
+    input.focus();
+    input.select();
+    input.scrollIntoView({ block: "nearest", behavior: "smooth" });
   }, []);
 
   useEffect(() => {
@@ -64,14 +67,14 @@ export default function PillarEntrySheet({
   }, [onClose]);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center">
+    <div className="fixed inset-0 z-[60] flex min-h-dvh items-end justify-center">
       <div className="absolute inset-0 bg-foreground/40" aria-hidden />
       <div
         ref={panelRef}
         role="dialog"
         aria-modal="true"
         aria-label={`${dayName} ${meta.title}`}
-        className="relative z-10 w-full max-w-[420px] rounded-t-[24px] border border-border border-b-0 bg-card px-5 pb-6 pt-3 shadow-[0_-12px_40px_-16px_rgba(17,17,17,0.28)]"
+        className="relative z-10 w-full max-w-[420px] rounded-t-[24px] border border-border border-b-0 bg-card px-5 pt-3 pb-[max(1.5rem,env(safe-area-inset-bottom))] shadow-[0_-12px_40px_-16px_rgba(17,17,17,0.28)]"
       >
         <div className="mx-auto mb-4 h-1 w-10 rounded-full bg-muted/50" aria-hidden />
         <p className="mb-5 text-center text-[11px] font-bold uppercase tracking-[0.14em] text-muted">
