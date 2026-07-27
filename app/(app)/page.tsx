@@ -137,13 +137,13 @@ export default function Home() {
           <div className="grid gap-3 sm:grid-cols-2">
             <QuickAccessCard
               title="My Food Plan"
-              description="Your structure for this week"
+              description="Plan your week"
               icon={<PlanIcon className="h-5 w-5" />}
               href="/plan"
             />
             <QuickAccessCard
               title="My Success Tracker"
-              description="Log and review your days"
+              description="Tick off your daily wins"
               icon={<TrackerIcon className="h-5 w-5" />}
               href="/tracker"
             />

@@ -15,7 +15,7 @@ import { createClient } from "@/lib/supabase/client";
 import { getWeekStart } from "@/lib/week";
 import type { WeightMeasurement } from "@/types";
 
-type MetricKey = "weight" | "waist" | "hips" | "chest";
+type MetricKey = "weight" | "waist" | "hips";
 
 type Entry = {
   week_start: string;
@@ -43,7 +43,6 @@ const METRICS: { key: MetricKey; label: string }[] = [
   { key: "weight", label: "Weight" },
   { key: "waist", label: "Waist" },
   { key: "hips", label: "Hips" },
-  { key: "chest", label: "Chest" },
 ];
 
 const EXTRA_FIELDS = [
@@ -373,6 +372,25 @@ export default function MeasurementsPage() {
         ]}
       />
 
+      <TipsCard
+        title="Body Measurement Tips"
+        items={[
+          "Take your body measurements every 4 weeks, not every week.",
+          "Use the same tape measure and measure the same areas each time.",
+          "Record your measurements in inches (or centimetres, depending on the unit you choose).",
+        ]}
+      />
+
+      <TipsCard
+        title="Other Great Ways to Measure Progress"
+        intro="Remember, the scales are only one way to measure progress."
+        items={[
+          "Progress photos are a fantastic way to see changes over time.",
+          "My favourite way to measure progress is by choosing one favourite item of clothing and trying it on every couple of weeks. Often you'll notice your clothes fitting differently before you see a big change on the scales.",
+          "Pay attention to how you feel, your energy levels, your strength and your confidence too.",
+        ]}
+      />
+
       {/* This week's entry — log or read-only */}
       <section className="rounded-[20px] border border-border bg-card p-5 shadow-[0_12px_26px_-18px_rgba(17,17,17,0.16)]">
         <div className="mb-4 flex items-center gap-3">
@@ -487,25 +505,6 @@ export default function MeasurementsPage() {
           )}
         </div>
       </section>
-
-      <TipsCard
-        title="Body Measurement Tips"
-        items={[
-          "Take your body measurements every 4 weeks, not every week.",
-          "Use the same tape measure and measure the same areas each time.",
-          "Record your measurements in inches (or centimetres, depending on the unit you choose).",
-        ]}
-      />
-
-      <TipsCard
-        title="Other Great Ways to Measure Progress"
-        intro="Remember, the scales are only one way to measure progress."
-        items={[
-          "Progress photos are a fantastic way to see changes over time.",
-          "My favourite way to measure progress is by choosing one favourite item of clothing and trying it on every couple of weeks. Often you'll notice your clothes fitting differently before you see a big change on the scales.",
-          "Pay attention to how you feel, your energy levels, your strength and your confidence too.",
-        ]}
-      />
 
       {/* Trend */}
       <section className="rounded-[20px] border border-border bg-card p-5 shadow-[0_12px_26px_-18px_rgba(17,17,17,0.16)]">

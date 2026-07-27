@@ -7,8 +7,8 @@ import {
   ArrowRightIcon,
   CheckIcon,
   RefreshIcon,
-  RulerIcon,
 } from "@/components/icons";
+import PillarInfoButton from "@/components/tracker/PillarInfoButton";
 import { getWeeklyTracker, saveWeeklyTracker } from "@/lib/api/tracker";
 import { useProfile } from "@/lib/context/ProfileContext";
 import { useDebouncedSave } from "@/lib/hooks/useDebouncedSave";
@@ -33,6 +33,16 @@ const NUMERIC_PILLAR_ROWS: {
   { key: "water", label: "Water (L)", step: "0.1" },
   { key: "steps", label: "Steps" },
 ];
+
+const PILLAR_INFO = {
+  calories:
+    "Tracking calories? Enter your daily total. Not tracking? If you've been consistent with your food that day, simply tick the box.",
+  protein:
+    "Tracking protein? Enter your daily total. Not tracking? If you've been consistent with your protein intake that day, simply tick the box.",
+  water: "Enter the litres of water you drank today.",
+  steps: "Enter your total steps for the day.",
+  workout: "Please tick the box if you completed a workout on this day.",
+} as const;
 
 function emptyMetrics(): DailyMetrics {
   return {
@@ -279,24 +289,14 @@ export default function TrackerPage() {
             />
           ))}
         </div>
+        <p className="mt-2 text-[12px] font-medium leading-snug text-muted">
+          These are your own personal non-negotiables. Choose three habits
+          you&apos;ll commit to this week.
+        </p>
       </section>
 
-      {/* Pillars */}
-      <section className="rounded-[20px] border border-border bg-card px-4 py-5 shadow-[0_12px_26px_-18px_rgba(17,17,17,0.16)]">
-        <div className="mb-2 flex items-center gap-3 px-1">
-          <span className="flex h-[38px] w-[38px] shrink-0 items-center justify-center rounded-full bg-brand-gradient text-white">
-            <RulerIcon className="h-4 w-4" />
-          </span>
-          <h2 className="font-heading text-base uppercase tracking-wide text-foreground">
-            Pillars
-          </h2>
-        </div>
-
-        <p className="mb-3 px-1 text-[12px] font-semibold leading-snug text-muted">
-          Tap the circle only if you stayed on track without counting calories
-          — not if you overate.
-        </p>
-
+      {/* Pillars grid */}
+      <section className="rounded-[20px] border border-border bg-card px-4 pt-6 pb-5 shadow-[0_12px_26px_-18px_rgba(17,17,17,0.16)]">
         <div className="grid grid-cols-[minmax(100px,1.4fr)_repeat(7,minmax(0,1fr))] items-center gap-x-0.5 gap-y-2">
           <div />
           {DAY_LABELS.map((d, i) => (
@@ -309,8 +309,9 @@ export default function TrackerPage() {
           ))}
 
           {/* Calories — hybrid number | tick (single-height cell) */}
-          <div className="pr-1.5 text-xs font-bold leading-tight text-foreground">
+          <div className="flex items-center gap-1 pr-1.5 text-xs font-bold leading-tight text-foreground">
             Calories (kcal)
+            <PillarInfoButton label="Calories" text={PILLAR_INFO.calories} />
           </div>
           {dailyMetrics.calories.map((value, dayIdx) => {
             const ticked = value === true;
@@ -327,14 +328,14 @@ export default function TrackerPage() {
                     aria-pressed
                     aria-label={`Calories tick — ${DAY_LABELS[dayIdx]}`}
                     disabled={isRevoked}
-                    className={`flex h-[34px] w-full min-w-0 max-w-[48px] items-center justify-center rounded-lg bg-brand-gradient transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
+                    className={`flex h-[34px] w-full min-w-0 max-w-[68px] items-center justify-center rounded-lg bg-brand-gradient transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
                       isRevoked ? "" : "cursor-pointer"
                     }`}
                   >
                     <CheckIcon className="h-3.5 w-3.5 text-white" />
                   </button>
                 ) : (
-                  <div className="relative h-[34px] w-full min-w-0 max-w-[48px]">
+                  <div className="relative h-[34px] w-full min-w-0 max-w-[68px]">
                     <input
                       type="number"
                       inputMode="decimal"
@@ -374,8 +375,9 @@ export default function TrackerPage() {
 
           {NUMERIC_PILLAR_ROWS.map(({ key, label, step }) => (
             <Fragment key={key}>
-              <div className="pr-1.5 text-xs font-bold leading-tight text-foreground">
+              <div className="flex items-center gap-1 pr-1.5 text-xs font-bold leading-tight text-foreground">
                 {label}
+                <PillarInfoButton label={label} text={PILLAR_INFO[key]} />
               </div>
               {dailyMetrics[key].map((value, dayIdx) => (
                 <div key={`${key}-${dayIdx}`} className="flex justify-center">
@@ -396,8 +398,9 @@ export default function TrackerPage() {
           ))}
 
           {/* Workout — checkboxes */}
-          <div className="pr-1.5 text-xs font-bold leading-tight text-foreground">
+          <div className="flex items-center gap-1 pr-1.5 text-xs font-bold leading-tight text-foreground">
             Workout
+            <PillarInfoButton label="Workout" text={PILLAR_INFO.workout} />
           </div>
           {dailyMetrics.workout.map((value, dayIdx) => {
             const checked = value === true;
@@ -425,14 +428,14 @@ export default function TrackerPage() {
         </div>
       </section>
 
-      {/* Sunday reset */}
+      {/* End of Week Reflection */}
       <section className="rounded-[20px] border border-border bg-card p-5 shadow-[0_12px_26px_-18px_rgba(17,17,17,0.16)]">
         <div className="mb-4 flex items-center gap-3">
           <span className="flex h-[38px] w-[38px] shrink-0 items-center justify-center rounded-full bg-brand-gradient text-white">
             <RefreshIcon className="h-4 w-4" />
           </span>
           <h2 className="font-heading text-base uppercase tracking-wide text-foreground">
-            Sunday Reset
+            End of Week Reflection
           </h2>
         </div>
 
@@ -468,9 +471,9 @@ export default function TrackerPage() {
 
       <div className="flex gap-3.5 rounded-[18px] border border-tip-border bg-tip-bg p-[18px]">
         <p className="text-[13.5px] font-semibold leading-relaxed text-foreground">
-          Remember… Life happens. Some days won&apos;t go to plan. If you miss a
-          box, don&apos;t worry. Don&apos;t wait until Monday. Simply tick the
-          next box and keep going. Consistency beats perfection.
+          Remember… Consistency doesn&apos;t come from perfection. It comes from
+          repeating the basics, week after week. Some boxes won&apos;t get ticked
+          and that&apos;s okay! Just keep showing up. 🧡
         </p>
       </div>
 
@@ -490,7 +493,8 @@ export default function TrackerPage() {
         <div className="flex-1">
           <p className="text-sm font-bold text-foreground">Sunday Reset</p>
           <p className="mt-0.5 text-[12.5px] text-muted">
-            Continue your full reset in the coaching app
+            Want to go deeper? Complete the full Sunday Reset in your coaching
+            app (optional).
           </p>
         </div>
         <span className="flex items-center gap-1 whitespace-nowrap text-xs font-bold text-brand-orange-dark">
