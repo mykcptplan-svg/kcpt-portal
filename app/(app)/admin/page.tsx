@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import HeartLoader from "@/components/HeartLoader";
-import { UsersIcon } from "@/components/icons";
+import { ChevronDownIcon, UsersIcon } from "@/components/icons";
 import {
   getMembersList,
   inviteMember,
@@ -50,6 +50,27 @@ export default function AdminPage() {
   const [editingQuoteId, setEditingQuoteId] = useState<string | null>(null);
   const [editingQuoteBody, setEditingQuoteBody] = useState("");
   const [quoteBusyId, setQuoteBusyId] = useState<string | null>(null);
+
+  const [membersOpen, setMembersOpen] = useState(true);
+  const [quotesOpen, setQuotesOpen] = useState(false);
+  const [memberQuery, setMemberQuery] = useState("");
+  const [quoteQuery, setQuoteQuery] = useState("");
+
+  const filteredMembers = useMemo(() => {
+    const q = memberQuery.trim().toLowerCase();
+    if (!q) return members;
+    return members.filter((m) => {
+      const name = m.full_name.toLowerCase();
+      const email = (m.email ?? "").toLowerCase();
+      return name.includes(q) || email.includes(q);
+    });
+  }, [members, memberQuery]);
+
+  const filteredQuotes = useMemo(() => {
+    const q = quoteQuery.trim().toLowerCase();
+    if (!q) return quotes;
+    return quotes.filter((quote) => quote.body.toLowerCase().includes(q));
+  }, [quotes, quoteQuery]);
 
   async function refreshMembers(token: string) {
     const list = await getMembersList(token);
@@ -381,19 +402,45 @@ export default function AdminPage() {
 
       <section className="overflow-hidden rounded-[20px] border border-border bg-card shadow-[0_12px_26px_-18px_rgba(17,17,17,0.16)]">
         <div className="px-5 pt-[18px]">
-          <div className="mb-4 flex items-center gap-3">
+          <button
+            type="button"
+            onClick={() => setMembersOpen((v) => !v)}
+            aria-expanded={membersOpen}
+            className="mb-4 flex w-full cursor-pointer items-center gap-3 text-left"
+          >
             <span className="flex h-[38px] w-[38px] shrink-0 items-center justify-center rounded-full bg-brand-gradient text-white">
               <UsersIcon className="h-4 w-4" />
             </span>
-            <h2 className="font-heading text-base uppercase tracking-wide text-foreground">
+            <h2 className="min-w-0 flex-1 font-heading text-base uppercase tracking-wide text-foreground">
               Members ({members.length})
             </h2>
-          </div>
+            <ChevronDownIcon
+              className={`h-5 w-5 shrink-0 text-muted transition-transform ${
+                membersOpen ? "rotate-180" : ""
+              }`}
+            />
+          </button>
         </div>
 
+        {membersOpen && (
+          <>
+            <div className="px-5 pb-3">
+              <input
+                type="search"
+                value={memberQuery}
+                onChange={(e) => setMemberQuery(e.target.value)}
+                placeholder="Search by name or email…"
+                className="w-full rounded-[10px] border border-border bg-background px-[13px] py-3 text-[14px] font-semibold text-foreground outline-none focus:border-brand-orange"
+              />
+            </div>
+
+            {filteredMembers.length === 0 ? (
+              <p className="px-5 pb-5 text-sm text-muted">No members match.</p>
+            ) : (
+              <>
         {/* Mobile: stacked cards */}
         <div className="flex flex-col gap-2.5 px-5 pb-5 md:hidden">
-          {members.map((m) => {
+          {filteredMembers.map((m) => {
             const active = m.status === "active";
             const displayName = m.full_name.trim() || m.email || "—";
             return (
@@ -517,7 +564,7 @@ export default function AdminPage() {
               </span>
             </div>
 
-            {members.map((m) => {
+            {filteredMembers.map((m) => {
               const active = m.status === "active";
               const displayName = m.full_name.trim() || m.email || "—";
               return (
@@ -616,19 +663,35 @@ export default function AdminPage() {
             })}
           </div>
         </div>
+              </>
+            )}
+          </>
+        )}
       </section>
 
       <section className="overflow-hidden rounded-[20px] border border-border bg-card shadow-[0_12px_26px_-18px_rgba(17,17,17,0.16)]">
-        <div className="px-5 pt-[18px] pb-5">
-          <div className="mb-4 flex items-center gap-3">
+        <div className={`px-5 pt-[18px] ${quotesOpen ? "pb-5" : "pb-[18px]"}`}>
+          <button
+            type="button"
+            onClick={() => setQuotesOpen((v) => !v)}
+            aria-expanded={quotesOpen}
+            className={`flex w-full cursor-pointer items-center gap-3 text-left ${quotesOpen ? "mb-4" : ""}`}
+          >
             <span className="flex h-[38px] w-[38px] shrink-0 items-center justify-center rounded-full bg-brand-gradient text-white">
               <span className="font-heading text-sm text-white">“”</span>
             </span>
-            <h2 className="font-heading text-base uppercase tracking-wide text-foreground">
+            <h2 className="min-w-0 flex-1 font-heading text-base uppercase tracking-wide text-foreground">
               Motivational Quotes ({quotes.length})
             </h2>
-          </div>
+            <ChevronDownIcon
+              className={`h-5 w-5 shrink-0 text-muted transition-transform ${
+                quotesOpen ? "rotate-180" : ""
+              }`}
+            />
+          </button>
 
+          {quotesOpen && (
+            <>
           <div>
             <p className="mb-2 text-[11px] font-bold uppercase tracking-wide text-muted">
               New quote
@@ -656,11 +719,23 @@ export default function AdminPage() {
             <p className="mt-3 text-xs text-brand-orange-dark">{quoteError}</p>
           )}
 
-          <div className="mt-5 flex flex-col gap-2.5">
+          <div className="mt-5">
+            <input
+              type="search"
+              value={quoteQuery}
+              onChange={(e) => setQuoteQuery(e.target.value)}
+              placeholder="Search quotes…"
+              className="w-full rounded-[10px] border border-border bg-background px-[13px] py-3 text-[14px] font-semibold text-foreground outline-none focus:border-brand-orange"
+            />
+          </div>
+
+          <div className="mt-3 flex flex-col gap-2.5">
             {quotes.length === 0 ? (
               <p className="text-sm text-muted">No quotes yet.</p>
+            ) : filteredQuotes.length === 0 ? (
+              <p className="text-sm text-muted">No quotes match.</p>
             ) : (
-              quotes.map((q) => {
+              filteredQuotes.map((q) => {
                 const busy = quoteBusyId === q.id;
                 const editing = editingQuoteId === q.id;
                 return (
@@ -771,6 +846,8 @@ export default function AdminPage() {
               })
             )}
           </div>
+            </>
+          )}
         </div>
       </section>
     </div>
