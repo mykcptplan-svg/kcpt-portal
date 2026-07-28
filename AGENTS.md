@@ -21,6 +21,7 @@ Keep this file up to date as decisions evolve. Any AI agent (Cursor, Claude, or 
 - `WeeklyTrackerEntry.wins` / `next_week_focus` shape: each `string[]` of length 3 (Sunday Reset reflection; not auto-linked to `non_negotiables`).
 - `WeeklyTrackerEntry.daily_metrics` (Pillars) shape: `{ calories, protein, water, steps, workout }` — each length 7 (Mon–Sun). `calories` is `(number | true | null)[]` (`true` = ticked without a number); `protein`/`water`/`steps` are `(number | null)[]`; `workout` is `(boolean | null)[]`. Unset days are `null`, not `0`.
 - `WeeklyBasePlan.evening_meals` shape: `{ day: string; meal: string; approach: "meal_bank" | "orange_base" | "own" }[]` (one entry per day of the week).
+- `weight_measurements.chest` is intentionally left as a nullable orphan column in the DB (Kelly asked to remove it from UI/API; no DROP migration because it is nullable and existing rows may retain values). Do not re-expose it in the app without an explicit product decision.
 - **Registration flow:** After invite + password setup, the new member’s `profiles` row is created by the `complete-registration` Edge Function (caller JWT + RLS), not by a direct supabase-js insert from the frontend — even though `profiles_insert_own` would allow it. Do not “simplify” this back to a client insert.
 
 ## Notes for PDF export (Milestone 3, not yet built)
