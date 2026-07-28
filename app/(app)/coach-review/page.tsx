@@ -130,6 +130,17 @@ export default function CoachReviewPage() {
   const [expandLoading, setExpandLoading] = useState<string | null>(null);
   const [expandError, setExpandError] = useState<string | null>(null);
   const [openSections, setOpenSections] = useState<Set<string>>(new Set());
+  const [memberQuery, setMemberQuery] = useState("");
+
+  const filteredMembers = useMemo(() => {
+    const q = memberQuery.trim().toLowerCase();
+    if (!q) return members;
+    return members.filter((m) => {
+      const name = m.full_name.toLowerCase();
+      const email = (m.email ?? "").toLowerCase();
+      return name.includes(q) || email.includes(q);
+    });
+  }, [members, memberQuery]);
 
   useEffect(() => {
     let cancelled = false;
@@ -351,9 +362,20 @@ export default function CoachReviewPage() {
 
       {!loadError && members.length > 0 && active && (
         <>
+          <input
+            type="search"
+            value={memberQuery}
+            onChange={(e) => setMemberQuery(e.target.value)}
+            placeholder="Search by name or email…"
+            className="w-full rounded-[10px] border border-border bg-card px-[13px] py-3 text-[14px] font-semibold text-foreground outline-none focus:border-brand-orange md:max-w-[260px]"
+          />
+
           {/* Mobile: horizontal scroll chips */}
           <div className="flex gap-2.5 overflow-x-auto px-0.5 pb-1.5 md:hidden">
-            {members.map((m) => {
+            {filteredMembers.length === 0 ? (
+              <p className="text-sm text-muted">No members match.</p>
+            ) : (
+              filteredMembers.map((m) => {
               const selected = m.id === selectedMemberId;
               return (
                 <button
@@ -387,13 +409,17 @@ export default function CoachReviewPage() {
                   </span>
                 </button>
               );
-            })}
+            })
+            )}
           </div>
 
           <div className="flex flex-wrap items-start gap-4 md:flex-nowrap">
             {/* Desktop: sidebar member list */}
             <div className="hidden w-full max-w-[260px] shrink-0 flex-col gap-1.5 rounded-[20px] border border-border bg-card p-3.5 shadow-[0_12px_26px_-18px_rgba(17,17,17,0.16)] md:flex">
-              {members.map((m) => {
+              {filteredMembers.length === 0 ? (
+                <p className="px-1 py-2 text-sm text-muted">No members match.</p>
+              ) : (
+                filteredMembers.map((m) => {
                 const selected = m.id === selectedMemberId;
                 return (
                   <button
@@ -422,7 +448,8 @@ export default function CoachReviewPage() {
                     </div>
                   </button>
                 );
-              })}
+              })
+              )}
             </div>
 
             {/* Detail panel */}
