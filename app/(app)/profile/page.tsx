@@ -121,7 +121,13 @@ export default function ProfilePage() {
       <div className="mt-1 text-center">
         <p className="text-xs font-semibold text-muted">KCPT Portal v1.0</p>
         <p className="mt-1.5 text-[12.5px] font-medium text-muted">
-          Need help? <span className="font-bold text-brand-orange">Contact Kelly</span>
+          Need help?{" "}
+          <a
+            href="mailto:kellycafferyclients@gmail.com"
+            className="font-bold text-brand-orange"
+          >
+            Contact Kelly
+          </a>
         </p>
       </div>
     </div>
