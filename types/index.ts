@@ -38,8 +38,10 @@ export type WeeklyTrackerEntry = {
   non_negotiables: string[];
   daily_metrics: DailyMetrics;
   sunday_reset_done: boolean;
-  went_well: string | null;
-  adjust_next: string | null;
+  /** Length 3 — Sunday Reset wins */
+  wins: string[];
+  /** Length 3 — Sunday Reset next-week focus (reflective; not linked to non_negotiables) */
+  next_week_focus: string[];
 };
 
 export type WeightMeasurement = {

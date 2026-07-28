@@ -4,7 +4,6 @@ import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import AutosaveStatus from "@/components/AutosaveStatus";
 import HeartLoader from "@/components/HeartLoader";
 import {
-  ArrowRightIcon,
   CheckIcon,
   RefreshIcon,
 } from "@/components/icons";
@@ -121,8 +120,8 @@ export default function TrackerPage() {
 
   const [nonNegotiables, setNonNegotiables] = useState<string[]>(["", "", ""]);
   const [dailyMetrics, setDailyMetrics] = useState<DailyMetrics>(emptyMetrics);
-  const [wentWell, setWentWell] = useState("");
-  const [adjustNext, setAdjustNext] = useState("");
+  const [wins, setWins] = useState<string[]>(["", "", ""]);
+  const [nextWeekFocus, setNextWeekFocus] = useState<string[]>(["", "", ""]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [activeCell, setActiveCell] = useState<{
@@ -151,8 +150,10 @@ export default function TrackerPage() {
         const names = tracker.non_negotiables ?? [];
         setNonNegotiables([0, 1, 2].map((i) => names[i] ?? ""));
         setDailyMetrics(normalizeDailyMetrics(tracker.daily_metrics));
-        setWentWell(tracker.went_well ?? "");
-        setAdjustNext(tracker.adjust_next ?? "");
+        const winList = tracker.wins ?? [];
+        setWins([0, 1, 2].map((i) => winList[i] ?? ""));
+        const focusList = tracker.next_week_focus ?? [];
+        setNextWeekFocus([0, 1, 2].map((i) => focusList[i] ?? ""));
       } catch (err) {
         if (!cancelled) {
           setLoadError(err instanceof Error ? err.message : "Unable to load tracker.");
@@ -215,8 +216,8 @@ export default function TrackerPage() {
   }
 
   const draft = useMemo(
-    () => ({ nonNegotiables, dailyMetrics, wentWell, adjustNext }),
-    [nonNegotiables, dailyMetrics, wentWell, adjustNext],
+    () => ({ nonNegotiables, dailyMetrics, wins, nextWeekFocus }),
+    [nonNegotiables, dailyMetrics, wins, nextWeekFocus],
   );
 
   const { status, error: saveError } = useDebouncedSave(
@@ -224,16 +225,17 @@ export default function TrackerPage() {
     async (value) => {
       const accessToken = accessTokenRef.current;
       if (!accessToken) throw new Error("Not logged in.");
+      const hasResetContent = [...value.wins, ...value.nextWeekFocus].some(
+        (s) => s.trim().length > 0,
+      );
       await saveWeeklyTracker(
         {
           week_start: weekStart,
           non_negotiables: value.nonNegotiables,
           daily_metrics: value.dailyMetrics,
-          sunday_reset_done: Boolean(
-            value.wentWell.trim() || value.adjustNext.trim(),
-          ),
-          went_well: value.wentWell.trim() || null,
-          adjust_next: value.adjustNext.trim() || null,
+          sunday_reset_done: hasResetContent,
+          wins: value.wins,
+          next_week_focus: value.nextWeekFocus,
         },
         accessToken,
       );
@@ -469,44 +471,94 @@ export default function TrackerPage() {
         />
       )}
 
-      {/* End of Week Reflection */}
+      {/* Sunday Reset */}
       <section className="rounded-[20px] border border-border bg-card p-5 shadow-[0_12px_26px_-18px_rgba(17,17,17,0.16)]">
         <div className="mb-4 flex items-center gap-3">
           <span className="flex h-[38px] w-[38px] shrink-0 items-center justify-center rounded-full bg-brand-gradient text-white">
             <RefreshIcon className="h-4 w-4" />
           </span>
           <h2 className="font-heading text-base uppercase tracking-wide text-foreground">
-            End of Week Reflection
+            Sunday Reset
           </h2>
         </div>
 
-        <p className="mb-4 text-[13.5px] font-semibold leading-relaxed text-foreground">
-          Take a minute to look back on your week before starting a new one.
-        </p>
+        <div className="mb-5">
+          <p className="mb-2 text-[13.5px] font-bold leading-snug text-foreground">
+            🧡 What went well this week?
+          </p>
+          <p className="mb-3 text-[12.5px] font-semibold leading-relaxed text-muted">
+            Take a moment to celebrate your wins, no matter how small. We
+            don&apos;t fix what isn&apos;t broke! If something worked well this
+            week, keep doing it. Consistency beats constantly changing the plan.
+          </p>
+          <p className="mb-2 text-[11px] font-bold uppercase tracking-wide text-muted">
+            Your wins:
+          </p>
+          <div className="flex flex-col gap-2">
+            {wins.map((win, i) => (
+              <div key={`win-${i}`} className="flex items-center gap-2">
+                <span className="w-5 shrink-0 text-[12px] font-bold text-muted">
+                  {i + 1}.
+                </span>
+                <input
+                  type="text"
+                  value={win}
+                  onChange={(e) => {
+                    const next = wins.slice();
+                    next[i] = e.target.value;
+                    setWins(next);
+                  }}
+                  placeholder={
+                    i === 0
+                      ? "e.g. Hit my water goal every day"
+                      : "Optional"
+                  }
+                  maxLength={80}
+                  disabled={isRevoked}
+                  className="w-full rounded-[10px] border border-border bg-background px-3 py-2 text-[13.5px] text-foreground outline-none focus:border-brand-orange disabled:cursor-not-allowed disabled:opacity-60"
+                />
+              </div>
+            ))}
+          </div>
+        </div>
 
-        <p className="mb-2 text-[11px] font-bold uppercase tracking-wide text-muted">
-          What went well this week that you want to repeat?
-        </p>
-        <textarea
-          value={wentWell}
-          onChange={(e) => setWentWell(e.target.value)}
-          placeholder="e.g. Hit my water goal every day"
-          rows={2}
-          disabled={isRevoked}
-          className="w-full resize-none rounded-[10px] border border-border bg-background px-[13px] py-3 text-[13.5px] text-foreground outline-none focus:border-brand-orange disabled:cursor-not-allowed disabled:opacity-60"
-        />
-
-        <p className="mb-2 mt-4 text-[11px] font-bold uppercase tracking-wide text-muted">
-          What would you like to improve next week?
-        </p>
-        <textarea
-          value={adjustNext}
-          onChange={(e) => setAdjustNext(e.target.value)}
-          placeholder="e.g. Prep lunches on Sunday"
-          rows={2}
-          disabled={isRevoked}
-          className="w-full resize-none rounded-[10px] border border-border bg-background px-[13px] py-3 text-[13.5px] text-foreground outline-none focus:border-brand-orange disabled:cursor-not-allowed disabled:opacity-60"
-        />
+        <div className="mb-4">
+          <p className="mb-2 text-[13.5px] font-bold leading-snug text-foreground">
+            💪 What do I need to work on next week?
+          </p>
+          <p className="mb-3 text-[12.5px] font-semibold leading-relaxed text-muted">
+            Choose up to 3 non-negotiables that will make next week a success.
+            Keep them simple, realistic and within your control. Small,
+            consistent actions lead to big results.
+          </p>
+          <p className="mb-2 text-[11px] font-bold uppercase tracking-wide text-muted">
+            My 3 non-negotiables:
+          </p>
+          <div className="flex flex-col gap-2">
+            {nextWeekFocus.map((item, i) => (
+              <div key={`focus-${i}`} className="flex items-center gap-2">
+                <span className="w-5 shrink-0 text-[12px] font-bold text-muted">
+                  {i + 1}.
+                </span>
+                <input
+                  type="text"
+                  value={item}
+                  onChange={(e) => {
+                    const next = nextWeekFocus.slice();
+                    next[i] = e.target.value;
+                    setNextWeekFocus(next);
+                  }}
+                  placeholder={
+                    i === 0 ? "e.g. Prep lunches on Sunday" : "Optional"
+                  }
+                  maxLength={80}
+                  disabled={isRevoked}
+                  className="w-full rounded-[10px] border border-border bg-background px-3 py-2 text-[13.5px] text-foreground outline-none focus:border-brand-orange disabled:cursor-not-allowed disabled:opacity-60"
+                />
+              </div>
+            ))}
+          </div>
+        </div>
 
         <p className="mt-4 text-[12px] font-medium leading-snug text-muted">
           Your progress is saved automatically. Every Monday your Success Tracker
@@ -518,27 +570,6 @@ export default function TrackerPage() {
       {(loadError || saveError) && (
         <p className="text-xs text-brand-orange-dark">{loadError ?? saveError}</p>
       )}
-
-      <a
-        href="https://forms.gle/vW1VFdMaXgaGcUUy5"
-        target="_blank"
-        rel="noopener noreferrer"
-        className="flex items-center gap-3.5 rounded-[18px] border border-tip-border bg-gradient-to-r from-[rgba(247,162,53,0.08)] to-[rgba(236,74,49,0.05)] p-4 transition-colors hover:border-brand-orange/40"
-      >
-        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-brand-gradient text-white">
-          <RefreshIcon className="h-4 w-4" />
-        </span>
-        <div className="flex-1">
-          <p className="text-sm font-bold text-foreground">Sunday Reset</p>
-          <p className="mt-0.5 text-[12.5px] text-muted">
-            Want to go a little deeper? Complete your optional Sunday Reset in the
-            KCPT App to reflect, reset and plan for the week ahead.
-          </p>
-        </div>
-        <span className="flex items-center gap-1 whitespace-nowrap text-xs font-bold text-brand-orange-dark">
-          Open <ArrowRightIcon className="h-3.5 w-3.5" />
-        </span>
-      </a>
 
       <div className="rounded-2xl bg-brand-gradient px-[18px] py-[14px] text-center">
         <span className="font-heading text-[15px] uppercase tracking-wide text-white">

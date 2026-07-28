@@ -16,8 +16,8 @@
  *       week_start: "2026-07-20",
  *       non_negotiables: ["", "", ""],
  *       sunday_reset_done: false,
- *       went_well: null,
- *       adjust_next: null,
+ *       wins: ["", "", ""],
+ *       next_week_focus: ["", "", ""],
  *     },
  *     session.access_token,
  *   );

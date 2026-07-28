@@ -142,9 +142,13 @@ function TrackerDetail({ tracker }: { tracker: WeeklyTrackerEntry | null }) {
   const metrics = tracker.daily_metrics;
   const workoutDays =
     metrics.workout?.filter((v) => v === true).length ?? 0;
-  const wentWell = tracker.went_well?.trim();
-  const adjustNext = tracker.adjust_next?.trim();
-  const hasSundayNotes = Boolean(wentWell || adjustNext);
+  const wins = (tracker.wins ?? [])
+    .map((n) => n.trim())
+    .filter((n) => n.length > 0);
+  const nextWeekFocus = (tracker.next_week_focus ?? [])
+    .map((n) => n.trim())
+    .filter((n) => n.length > 0);
+  const hasSundayNotes = wins.length > 0 || nextWeekFocus.length > 0;
 
   return (
     <div>
@@ -193,15 +197,39 @@ function TrackerDetail({ tracker }: { tracker: WeeklyTrackerEntry | null }) {
         Sunday Reset
       </p>
       {hasSundayNotes ? (
-        <div className="flex flex-col gap-2">
-          <p className="text-[12.5px] font-semibold leading-relaxed text-foreground">
-            <span className="font-bold text-muted">Went well: </span>
-            {wentWell || "Not noted"}
-          </p>
-          <p className="text-[12.5px] font-semibold leading-relaxed text-foreground">
-            <span className="font-bold text-muted">Adjusting: </span>
-            {adjustNext || "Not noted"}
-          </p>
+        <div className="flex flex-col gap-3">
+          {wins.length > 0 && (
+            <div>
+              <p className="mb-1 text-[12px] font-bold text-muted">Wins</p>
+              <ul className="flex flex-col gap-1">
+                {wins.map((item, i) => (
+                  <li
+                    key={`win-${i}`}
+                    className="text-[12.5px] font-semibold leading-relaxed text-foreground"
+                  >
+                    {i + 1}. {item}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+          {nextWeekFocus.length > 0 && (
+            <div>
+              <p className="mb-1 text-[12px] font-bold text-muted">
+                Next week focus
+              </p>
+              <ul className="flex flex-col gap-1">
+                {nextWeekFocus.map((item, i) => (
+                  <li
+                    key={`focus-${i}`}
+                    className="text-[12.5px] font-semibold leading-relaxed text-foreground"
+                  >
+                    {i + 1}. {item}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
         </div>
       ) : (
         <p className="text-[12.5px] font-semibold text-muted">

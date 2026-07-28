@@ -26,6 +26,8 @@ const WEEK_START_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
+const STRING3_ITEM_MAX = 200;
+
 function jsonResponse(body: Record<string, unknown>, status: number): Response {
   return new Response(JSON.stringify(body), {
     status,
@@ -59,6 +61,22 @@ function validateNonNegotiables(value: unknown): string | null {
   return null;
 }
 
+/** Exactly 3 strings, each at most STRING3_ITEM_MAX chars. */
+function validateString3(value: unknown, field: string): string | null {
+  if (!Array.isArray(value) || value.length !== 3) {
+    return `${field} must be an array of exactly 3 strings`;
+  }
+  for (let i = 0; i < value.length; i++) {
+    if (typeof value[i] !== "string") {
+      return `${field}[${i}] must be a string`;
+    }
+    if ((value[i] as string).length > STRING3_ITEM_MAX) {
+      return `${field}[${i}] must be at most ${STRING3_ITEM_MAX} characters`;
+    }
+  }
+  return null;
+}
+
 /** Coerce legacy habits objects or string[] into exactly 3 name strings. */
 function coerceNonNegotiables(raw: unknown): string[] {
   const names = ["", "", ""];
@@ -77,6 +95,16 @@ function coerceNonNegotiables(raw: unknown): string[] {
     }
   }
   return names;
+}
+
+/** Coerce jsonb/array into exactly 3 strings (pad/slice). */
+function coerceString3(raw: unknown): string[] {
+  const out = ["", "", ""];
+  if (!Array.isArray(raw)) return out;
+  for (let i = 0; i < 3; i++) {
+    if (typeof raw[i] === "string") out[i] = raw[i] as string;
+  }
+  return out;
 }
 
 const DAILY_METRIC_KEYS = [
@@ -147,33 +175,16 @@ function validateDailyMetrics(metrics: unknown): string | null {
   return null;
 }
 
-const RESET_TEXT_MAX = 2000;
-
-/** Absent or null -> null. Present non-string or over-length -> error. */
-function parseOptionalResetText(
-  value: unknown,
-  field: "went_well" | "adjust_next",
-): { error: string } | { value: string | null } {
-  if (value === undefined || value === null) {
-    return { value: null };
-  }
-  if (typeof value !== "string") {
-    return { error: `${field} must be a string` };
-  }
-  if (value.length > RESET_TEXT_MAX) {
-    return { error: `${field} must be at most ${RESET_TEXT_MAX} characters` };
-  }
-  return { value };
-}
-
 function mapTrackerRow(
   row: Record<string, unknown> | null,
 ): Record<string, unknown> | null {
   if (row === null) return null;
-  const { habits, ...rest } = row;
+  const { habits, wins, next_week_focus, ...rest } = row;
   return {
     ...rest,
     non_negotiables: coerceNonNegotiables(habits),
+    wins: coerceString3(wins),
+    next_week_focus: coerceString3(next_week_focus),
   };
 }
 
@@ -312,25 +323,22 @@ Deno.serve(async (req: Request) => {
     );
   }
 
-  const wentWellParsed = parseOptionalResetText(record.went_well, "went_well");
-  if ("error" in wentWellParsed) {
-    return jsonResponse({ error: wentWellParsed.error }, 400);
+  const winsError = validateString3(record.wins, "wins");
+  if (winsError) {
+    return jsonResponse({ error: winsError }, 400);
   }
 
-  const adjustNextParsed = parseOptionalResetText(
-    record.adjust_next,
-    "adjust_next",
-  );
-  if ("error" in adjustNextParsed) {
-    return jsonResponse({ error: adjustNextParsed.error }, 400);
+  const focusError = validateString3(record.next_week_focus, "next_week_focus");
+  if (focusError) {
+    return jsonResponse({ error: focusError }, 400);
   }
 
   const week_start = record.week_start;
   const non_negotiables = record.non_negotiables;
   const daily_metrics = record.daily_metrics;
   const sunday_reset_done = record.sunday_reset_done;
-  const went_well = wentWellParsed.value;
-  const adjust_next = adjustNextParsed.value;
+  const wins = record.wins;
+  const next_week_focus = record.next_week_focus;
 
   const { error: upsertError } = await callerClient
     .from("weekly_tracker_entries")
@@ -341,8 +349,8 @@ Deno.serve(async (req: Request) => {
         habits: non_negotiables,
         daily_metrics,
         sunday_reset_done,
-        went_well,
-        adjust_next,
+        wins,
+        next_week_focus,
       },
       { onConflict: "user_id,week_start" },
     );
