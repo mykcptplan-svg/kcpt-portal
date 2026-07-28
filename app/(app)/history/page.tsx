@@ -8,10 +8,12 @@ import SectionDetail, {
 import {
   ChevronDownIcon,
   ClipboardCheckIcon,
+  DownloadIcon,
   PlanIcon,
   RulerIcon,
 } from "@/components/icons";
 import { getWeeklyBasePlan } from "@/lib/api/basePlan";
+import { exportWeekPdf } from "@/lib/api/exportPdf";
 import { getWeeksList, type WeekSummary } from "@/lib/api/history";
 import { getWeightMeasurement } from "@/lib/api/measurements";
 import { getWeeklyTracker } from "@/lib/api/tracker";
@@ -98,6 +100,10 @@ export default function HistoryPage() {
   const [expandLoading, setExpandLoading] = useState<string | null>(null);
   const [expandError, setExpandError] = useState<string | null>(null);
   const [openSections, setOpenSections] = useState<Set<string>>(new Set());
+  const [downloadingWeekStart, setDownloadingWeekStart] = useState<
+    string | null
+  >(null);
+  const [downloadError, setDownloadError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -227,6 +233,33 @@ export default function HistoryPage() {
     });
   }
 
+  async function handleDownloadPdf(weekStart: string) {
+    const token = accessTokenRef.current;
+    if (!token) {
+      setDownloadError("Not logged in.");
+      return;
+    }
+    setDownloadError(null);
+    setDownloadingWeekStart(weekStart);
+    try {
+      const blob = await exportWeekPdf(weekStart, token);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `kcpt-week-${weekStart}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      setDownloadError(
+        err instanceof Error ? err.message : "Unable to download week PDF",
+      );
+    } finally {
+      setDownloadingWeekStart(null);
+    }
+  }
+
   if (loading) {
     return (
       <div className="flex flex-1 items-center justify-center px-6 py-10">
@@ -261,6 +294,10 @@ export default function HistoryPage() {
         </p>
       )}
 
+      {downloadError && (
+        <p className="text-xs text-brand-orange-dark">{downloadError}</p>
+      )}
+
       <div className="flex flex-col gap-2.5">
         {weeks.map((week) => {
           const expanded = expandedWeekStart === week.week_start;
@@ -268,6 +305,7 @@ export default function HistoryPage() {
           const statusStyle = STATUS_STYLES[status.key];
           const detail = detailCache[week.week_start];
           const isExpandLoading = expandLoading === week.week_start;
+          const isDownloading = downloadingWeekStart === week.week_start;
 
           const trackerDays = countTrackerDaysLogged(detail?.tracker ?? null);
           const { filled: mealsFilled, total: mealsTotal } =
@@ -309,45 +347,76 @@ export default function HistoryPage() {
               key={week.week_start}
               className="overflow-hidden rounded-[18px] border border-border bg-card shadow-[0_10px_22px_-16px_rgba(17,17,17,0.16)]"
             >
-              <button
-                type="button"
-                onClick={() => toggleWeek(week.week_start)}
-                className="flex w-full cursor-pointer items-center gap-3 px-[18px] py-4 text-left"
-              >
-                <span
-                  className="flex h-[34px] w-[34px] shrink-0 items-center justify-center rounded-full"
-                  style={{
-                    background: expanded
-                      ? "var(--brand-gradient)"
-                      : "var(--tip-bg)",
-                  }}
-                >
-                  <RulerIcon
-                    className={`h-3.5 w-3.5 ${expanded ? "text-white" : "text-tip-text"}`}
-                  />
-                </span>
-                <span className="min-w-0 flex-1 truncate font-heading text-[15px] uppercase tracking-wide text-foreground">
-                  {formatWeekRange(week.week_start)}
-                </span>
-                <span
-                  className="flex shrink-0 items-center gap-1.5 rounded-full px-[11px] py-[5px]"
-                  style={{ background: statusStyle.bg }}
+              <div className="flex w-full items-center gap-2 px-[18px] py-4">
+                <button
+                  type="button"
+                  onClick={() => toggleWeek(week.week_start)}
+                  className="flex min-w-0 flex-1 cursor-pointer items-center gap-3 text-left"
                 >
                   <span
-                    className="h-1.5 w-1.5 rounded-full"
-                    style={{ background: statusStyle.dot }}
-                  />
-                  <span
-                    className="text-[11px] font-bold tracking-wide"
-                    style={{ color: statusStyle.color }}
+                    className="flex h-[34px] w-[34px] shrink-0 items-center justify-center rounded-full"
+                    style={{
+                      background: expanded
+                        ? "var(--brand-gradient)"
+                        : "var(--tip-bg)",
+                    }}
                   >
-                    {status.label}
+                    <RulerIcon
+                      className={`h-3.5 w-3.5 ${expanded ? "text-white" : "text-tip-text"}`}
+                    />
                   </span>
-                </span>
-                <ChevronDownIcon
-                  className={`h-4 w-4 shrink-0 text-muted transition-transform ${expanded ? "rotate-180" : ""}`}
-                />
-              </button>
+                  <span className="min-w-0 flex-1 truncate font-heading text-[15px] uppercase tracking-wide text-foreground">
+                    {formatWeekRange(week.week_start)}
+                  </span>
+                  <span
+                    className="flex shrink-0 items-center gap-1.5 rounded-full px-[11px] py-[5px]"
+                    style={{ background: statusStyle.bg }}
+                  >
+                    <span
+                      className="h-1.5 w-1.5 rounded-full"
+                      style={{ background: statusStyle.dot }}
+                    />
+                    <span
+                      className="text-[11px] font-bold tracking-wide"
+                      style={{ color: statusStyle.color }}
+                    >
+                      {status.label}
+                    </span>
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void handleDownloadPdf(week.week_start)}
+                  disabled={isDownloading}
+                  aria-label={
+                    isDownloading
+                      ? `Generating PDF for ${formatWeekRange(week.week_start)}`
+                      : `Download PDF for ${formatWeekRange(week.week_start)}`
+                  }
+                  className="flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-full text-muted transition-colors hover:bg-tip-bg hover:text-foreground disabled:cursor-wait disabled:opacity-50"
+                >
+                  {isDownloading ? (
+                    <span className="text-[10px] font-bold text-muted">…</span>
+                  ) : (
+                    <DownloadIcon className="h-4 w-4" />
+                  )}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => toggleWeek(week.week_start)}
+                  aria-expanded={expanded}
+                  aria-label={
+                    expanded
+                      ? `Collapse ${formatWeekRange(week.week_start)}`
+                      : `Expand ${formatWeekRange(week.week_start)}`
+                  }
+                  className="flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center text-muted"
+                >
+                  <ChevronDownIcon
+                    className={`h-4 w-4 transition-transform ${expanded ? "rotate-180" : ""}`}
+                  />
+                </button>
+              </div>
 
               {expanded && (
                 <div className="px-[18px] pb-5">
