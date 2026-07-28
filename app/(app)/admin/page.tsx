@@ -9,6 +9,13 @@ import {
   manageMember,
   type MemberListItem,
 } from "@/lib/api/admin";
+import {
+  createQuote,
+  deleteQuote,
+  listQuotes,
+  updateQuote,
+  type MotivationalQuote,
+} from "@/lib/api/quotes";
 import { createClient } from "@/lib/supabase/client";
 
 function initialsFromFullName(fullName: string): string {
@@ -27,6 +34,7 @@ export default function AdminPage() {
   const accessTokenRef = useRef<string | null>(null);
 
   const [members, setMembers] = useState<MemberListItem[]>([]);
+  const [quotes, setQuotes] = useState<MotivationalQuote[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -36,9 +44,21 @@ export default function AdminPage() {
   const [inviting, setInviting] = useState(false);
   const [inviteError, setInviteError] = useState<string | null>(null);
 
+  const [newQuoteBody, setNewQuoteBody] = useState("");
+  const [addingQuote, setAddingQuote] = useState(false);
+  const [quoteError, setQuoteError] = useState<string | null>(null);
+  const [editingQuoteId, setEditingQuoteId] = useState<string | null>(null);
+  const [editingQuoteBody, setEditingQuoteBody] = useState("");
+  const [quoteBusyId, setQuoteBusyId] = useState<string | null>(null);
+
   async function refreshMembers(token: string) {
     const list = await getMembersList(token);
     setMembers(list);
+  }
+
+  async function refreshQuotes(token: string) {
+    const list = await listQuotes(token);
+    setQuotes(list);
   }
 
   useEffect(() => {
@@ -54,11 +74,14 @@ export default function AdminPage() {
           return;
         }
         accessTokenRef.current = session.access_token;
-        await refreshMembers(session.access_token);
+        await Promise.all([
+          refreshMembers(session.access_token),
+          refreshQuotes(session.access_token),
+        ]);
       } catch (err) {
         if (!cancelled) {
           setLoadError(
-            err instanceof Error ? err.message : "Unable to load members.",
+            err instanceof Error ? err.message : "Unable to load admin data.",
           );
         }
       } finally {
@@ -156,6 +179,121 @@ export default function AdminPage() {
       setActionError(
         err instanceof Error ? err.message : "Unable to update member.",
       );
+    }
+  }
+
+  async function handleAddQuote() {
+    const body = newQuoteBody.trim();
+    if (!body) return;
+    const token = accessTokenRef.current;
+    if (!token) {
+      setQuoteError("Not logged in.");
+      return;
+    }
+
+    setAddingQuote(true);
+    setQuoteError(null);
+    try {
+      const created = await createQuote(token, body, true);
+      setQuotes((prev) => [created, ...prev]);
+      setNewQuoteBody("");
+    } catch (err) {
+      setQuoteError(
+        err instanceof Error ? err.message : "Unable to add quote.",
+      );
+    } finally {
+      setAddingQuote(false);
+    }
+  }
+
+  async function handleSaveQuoteEdit(quote: MotivationalQuote) {
+    const body = editingQuoteBody.trim();
+    if (!body) {
+      setQuoteError("Quote text is required.");
+      return;
+    }
+    const token = accessTokenRef.current;
+    if (!token) {
+      setQuoteError("Not logged in.");
+      return;
+    }
+
+    setQuoteBusyId(quote.id);
+    setQuoteError(null);
+    try {
+      const updated = await updateQuote(token, { id: quote.id, body });
+      setQuotes((prev) =>
+        prev.map((q) => (q.id === updated.id ? updated : q)),
+      );
+      setEditingQuoteId(null);
+      setEditingQuoteBody("");
+    } catch (err) {
+      setQuoteError(
+        err instanceof Error ? err.message : "Unable to update quote.",
+      );
+    } finally {
+      setQuoteBusyId(null);
+    }
+  }
+
+  async function handleToggleQuoteActive(quote: MotivationalQuote) {
+    const token = accessTokenRef.current;
+    if (!token) {
+      setQuoteError("Not logged in.");
+      return;
+    }
+
+    setQuoteBusyId(quote.id);
+    setQuoteError(null);
+    const next = !quote.is_active;
+    setQuotes((prev) =>
+      prev.map((q) =>
+        q.id === quote.id ? { ...q, is_active: next } : q,
+      ),
+    );
+
+    try {
+      const updated = await updateQuote(token, {
+        id: quote.id,
+        is_active: next,
+      });
+      setQuotes((prev) =>
+        prev.map((q) => (q.id === updated.id ? updated : q)),
+      );
+    } catch (err) {
+      setQuotes((prev) =>
+        prev.map((q) => (q.id === quote.id ? quote : q)),
+      );
+      setQuoteError(
+        err instanceof Error ? err.message : "Unable to update quote.",
+      );
+    } finally {
+      setQuoteBusyId(null);
+    }
+  }
+
+  async function handleDeleteQuote(quote: MotivationalQuote) {
+    const token = accessTokenRef.current;
+    if (!token) {
+      setQuoteError("Not logged in.");
+      return;
+    }
+
+    setQuoteBusyId(quote.id);
+    setQuoteError(null);
+    try {
+      await deleteQuote(token, quote.id);
+      setQuotes((prev) => prev.filter((q) => q.id !== quote.id));
+      if (editingQuoteId === quote.id) {
+        setEditingQuoteId(null);
+        setEditingQuoteBody("");
+      }
+    } catch (err) {
+      setQuoteError(
+        err instanceof Error ? err.message : "Unable to delete quote.",
+      );
+    } finally {
+      setQuoteBusyId(null);
     }
   }
 
@@ -476,6 +614,162 @@ export default function AdminPage() {
                 </div>
               );
             })}
+          </div>
+        </div>
+      </section>
+
+      <section className="overflow-hidden rounded-[20px] border border-border bg-card shadow-[0_12px_26px_-18px_rgba(17,17,17,0.16)]">
+        <div className="px-5 pt-[18px] pb-5">
+          <div className="mb-4 flex items-center gap-3">
+            <span className="flex h-[38px] w-[38px] shrink-0 items-center justify-center rounded-full bg-brand-gradient text-white">
+              <span className="font-heading text-sm text-white">“”</span>
+            </span>
+            <h2 className="font-heading text-base uppercase tracking-wide text-foreground">
+              Motivational Quotes ({quotes.length})
+            </h2>
+          </div>
+
+          <div>
+            <p className="mb-2 text-[11px] font-bold uppercase tracking-wide text-muted">
+              New quote
+            </p>
+            <textarea
+              value={newQuoteBody}
+              onChange={(e) => setNewQuoteBody(e.target.value)}
+              rows={2}
+              placeholder="Add a short motivational line…"
+              className="w-full resize-y rounded-[10px] border border-border bg-background px-[13px] py-3 text-[14px] font-semibold text-foreground outline-none focus:border-brand-orange"
+            />
+            <button
+              type="button"
+              onClick={() => void handleAddQuote()}
+              disabled={addingQuote || !newQuoteBody.trim()}
+              className="mt-2.5 cursor-pointer rounded-[14px] bg-brand-gradient px-5 py-3 transition-transform hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              <span className="font-heading text-[13px] uppercase tracking-wide text-white">
+                {addingQuote ? "Adding…" : "Add Quote"}
+              </span>
+            </button>
+          </div>
+
+          {quoteError && (
+            <p className="mt-3 text-xs text-brand-orange-dark">{quoteError}</p>
+          )}
+
+          <div className="mt-5 flex flex-col gap-2.5">
+            {quotes.length === 0 ? (
+              <p className="text-sm text-muted">No quotes yet.</p>
+            ) : (
+              quotes.map((q) => {
+                const busy = quoteBusyId === q.id;
+                const editing = editingQuoteId === q.id;
+                return (
+                  <div
+                    key={q.id}
+                    className="rounded-[14px] border border-border bg-background px-3.5 py-3"
+                  >
+                    {editing ? (
+                      <textarea
+                        value={editingQuoteBody}
+                        onChange={(e) => setEditingQuoteBody(e.target.value)}
+                        rows={2}
+                        className="mb-2.5 w-full resize-y rounded-[10px] border border-border bg-card px-[13px] py-2.5 text-[14px] font-semibold text-foreground outline-none focus:border-brand-orange"
+                      />
+                    ) : (
+                      <p className="text-[14px] font-semibold leading-snug text-foreground">
+                        {q.body}
+                      </p>
+                    )}
+
+                    <div className="mt-2.5 flex flex-wrap items-center gap-2">
+                      <span
+                        className="inline-flex items-center gap-1.5 rounded-full px-[11px] py-[5px]"
+                        style={{
+                          background: q.is_active
+                            ? "rgba(143,174,138,0.15)"
+                            : "var(--badge-neutral-bg)",
+                        }}
+                      >
+                        <span
+                          className="h-1.5 w-1.5 rounded-full"
+                          style={{
+                            background: q.is_active
+                              ? "#6a9a63"
+                              : "var(--badge-neutral-dot)",
+                          }}
+                        />
+                        <span
+                          className="text-[11px] font-bold tracking-wide"
+                          style={{
+                            color: q.is_active
+                              ? "#4d7548"
+                              : "var(--badge-neutral-text)",
+                          }}
+                        >
+                          {q.is_active ? "Active" : "Inactive"}
+                        </span>
+                      </span>
+
+                      {editing ? (
+                        <>
+                          <button
+                            type="button"
+                            disabled={busy}
+                            onClick={() => void handleSaveQuoteEdit(q)}
+                            className="cursor-pointer rounded-[10px] bg-brand-gradient px-3 py-2 text-xs font-bold text-white disabled:opacity-60"
+                          >
+                            Save
+                          </button>
+                          <button
+                            type="button"
+                            disabled={busy}
+                            onClick={() => {
+                              setEditingQuoteId(null);
+                              setEditingQuoteBody("");
+                            }}
+                            className="cursor-pointer rounded-[10px] border border-border px-3 py-2 text-xs font-bold text-muted disabled:opacity-60"
+                          >
+                            Cancel
+                          </button>
+                        </>
+                      ) : (
+                        <>
+                          <button
+                            type="button"
+                            disabled={busy}
+                            onClick={() => {
+                              setEditingQuoteId(q.id);
+                              setEditingQuoteBody(q.body);
+                              setQuoteError(null);
+                            }}
+                            className="cursor-pointer rounded-[10px] border border-border px-3 py-2 text-xs font-bold text-foreground disabled:opacity-60"
+                          >
+                            Edit
+                          </button>
+                          <button
+                            type="button"
+                            disabled={busy}
+                            onClick={() => void handleToggleQuoteActive(q)}
+                            className="cursor-pointer rounded-[10px] border border-border px-3 py-2 text-xs font-bold text-foreground disabled:opacity-60"
+                          >
+                            {q.is_active ? "Deactivate" : "Activate"}
+                          </button>
+                          <button
+                            type="button"
+                            disabled={busy}
+                            onClick={() => void handleDeleteQuote(q)}
+                            className="cursor-pointer rounded-[10px] border border-border px-3 py-2 text-xs font-bold disabled:opacity-60"
+                            style={{ color: "var(--revoke-text)" }}
+                          >
+                            Delete
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                );
+              })
+            )}
           </div>
         </div>
       </section>

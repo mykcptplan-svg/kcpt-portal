@@ -2,10 +2,12 @@
 
 import { useEffect, useMemo, useState } from "react";
 import QuickAccessCard from "@/components/dashboard/QuickAccessCard";
+import MotivationalQuote from "@/components/dashboard/MotivationalQuote";
 import WeekOverviewCard from "@/components/dashboard/WeekOverviewCard";
 import HeartLoader from "@/components/HeartLoader";
 import { HistoryIcon, PlanIcon, RulerIcon, TrackerIcon } from "@/components/icons";
 import { getWeeklyBasePlan } from "@/lib/api/basePlan";
+import { listQuotes } from "@/lib/api/quotes";
 import { getWeeklyTracker } from "@/lib/api/tracker";
 import { useProfile } from "@/lib/context/ProfileContext";
 import { createClient } from "@/lib/supabase/client";
@@ -32,6 +34,7 @@ export default function Home() {
   const [basePlanFilled, setBasePlanFilled] = useState(false);
   const [trackerDaysLogged, setTrackerDaysLogged] = useState(0);
   const [weekLoading, setWeekLoading] = useState(true);
+  const [quoteText, setQuoteText] = useState<string | null>(null);
 
   const isRevoked = profile?.status === "revoked";
   const firstName =
@@ -59,9 +62,10 @@ export default function Home() {
         return;
       }
 
-      const [plan, tracker] = await Promise.all([
+      const [plan, tracker, quotes] = await Promise.all([
         getWeeklyBasePlan(weekStart, session.access_token).catch(() => null),
         getWeeklyTracker(weekStart, session.access_token).catch(() => null),
+        listQuotes(session.access_token).catch(() => []),
       ]);
       if (cancelled) return;
 
@@ -76,6 +80,15 @@ export default function Home() {
 
       if (tracker) {
         setTrackerDaysLogged(countTrackerDaysLogged(tracker));
+      }
+
+      if (quotes.length > 0) {
+        const active = quotes.filter((q) => q.is_active);
+        const pool = active.length > 0 ? active : quotes;
+        const pick = pool[Math.floor(Math.random() * pool.length)];
+        setQuoteText(pick.body);
+      } else {
+        setQuoteText(null);
       }
 
       setWeekLoading(false);
@@ -104,6 +117,11 @@ export default function Home() {
         <h1 className="mt-0.5 font-heading text-[38px] uppercase leading-none tracking-wide text-foreground">
           {firstName}
         </h1>
+        {quoteText ? (
+          <div className="mt-3">
+            <MotivationalQuote text={quoteText} />
+          </div>
+        ) : null}
       </div>
 
       {isRevoked ? (

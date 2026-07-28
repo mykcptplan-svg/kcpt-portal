@@ -14,8 +14,9 @@ Keep this file up to date as decisions evolve. Any AI agent (Cursor, Claude, or 
 
 ## Data model
 
-- Tables: `profiles`, `weekly_base_plans`, `weekly_tracker_entries`, `weight_measurements`.
+- Tables: `profiles`, `weekly_base_plans`, `weekly_tracker_entries`, `weight_measurements`, `motivational_quotes`.
 - RLS policy pattern: members can only select/insert/update rows where `user_id = auth.uid()`. The coach/admin role (in `profiles.role`) can read all rows across all tables (read-only) for the Coach Review feature. Only `profiles.status` and `profiles.coach_review_enabled` are writable by the admin role, never member content tables directly. A BEFORE UPDATE trigger also blocks non-admins from changing `role`, `status`, or `coach_review_enabled` on their own row.
+- `motivational_quotes`: authenticated users can `SELECT` active rows (`is_active = true`); admins can `SELECT` all rows and `INSERT`/`UPDATE`/`DELETE`. Managed via the `motivational-quotes` Edge Function (caller JWT only). Home shows one random active quote per page load.
 - `WeeklyTrackerEntry.non_negotiables` shape: `string[]` of length 3 (plain text goals; no per-day checks).
 - `WeeklyTrackerEntry.wins` / `next_week_focus` shape: each `string[]` of length 3 (Sunday Reset reflection; not auto-linked to `non_negotiables`).
 - `WeeklyTrackerEntry.daily_metrics` (Pillars) shape: `{ calories, protein, water, steps, workout }` — each length 7 (Mon–Sun). `calories` is `(number | true | null)[]` (`true` = ticked without a number); `protein`/`water`/`steps` are `(number | null)[]`; `workout` is `(boolean | null)[]`. Unset days are `null`, not `0`.
