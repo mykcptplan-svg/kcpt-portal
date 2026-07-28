@@ -1,14 +1,22 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import HeartLoader from "@/components/HeartLoader";
-import { ChartIcon, ClipboardCheckIcon, PlanIcon } from "@/components/icons";
+import SectionDetail, {
+  type HistorySectionKey,
+} from "@/components/history/SectionDetail";
+import {
+  ChevronDownIcon,
+  ClipboardCheckIcon,
+  PlanIcon,
+  RulerIcon,
+} from "@/components/icons";
 import {
   getMembersList,
   type MemberListItem,
 } from "@/lib/api/admin";
 import { getWeeklyBasePlan } from "@/lib/api/basePlan";
-import { getWeeksList } from "@/lib/api/history";
+import { getWeeksList, type WeekSummary } from "@/lib/api/history";
 import { getWeightMeasurement } from "@/lib/api/measurements";
 import { getWeeklyTracker } from "@/lib/api/tracker";
 import { countMealSlotsFilled } from "@/lib/planStats";
@@ -17,22 +25,60 @@ import {
   countTrackerDaysLogged,
   findClosestEarlierMeasuredWeek,
 } from "@/lib/trackerStats";
-import { getWeekStart } from "@/lib/week";
+import { formatWeekRange } from "@/lib/week";
 import type {
   WeeklyBasePlan,
   WeeklyTrackerEntry,
   WeightMeasurement,
 } from "@/types";
 
-type MemberDetailCache = {
+type WeekDetailCache = {
   plan: WeeklyBasePlan | null;
   tracker: WeeklyTrackerEntry | null;
   measurement: WeightMeasurement | null;
-  priorWeekStart: string | null;
 };
 
-function measurementCacheKey(memberId: string, weekStart: string): string {
-  return `${memberId}:${weekStart}`;
+function computeStatus(w: WeekSummary): {
+  key: "complete" | "partial" | "none";
+  label: string;
+} {
+  const flags = [w.has_base_plan, w.has_tracker, w.has_measurements];
+  const completeCount = flags.filter(Boolean).length;
+  if (completeCount === 3) return { key: "complete", label: "Complete" };
+  if (completeCount === 0) return { key: "none", label: "No Data" };
+  return { key: "partial", label: "Partial" };
+}
+
+const STATUS_STYLES = {
+  complete: { bg: "rgba(143,174,138,0.15)", dot: "#6a9a63", color: "#4d7548" },
+  partial: { bg: "rgba(251,147,58,0.14)", dot: "#FB933A", color: "#B8681D" },
+  none: {
+    bg: "var(--badge-neutral-bg)",
+    dot: "var(--badge-neutral-dot)",
+    color: "var(--badge-neutral-text)",
+  },
+} as const;
+
+function measurementSummary(
+  week: WeekSummary,
+  detail: WeekDetailCache | undefined,
+  weeks: WeekSummary[],
+  measurementByWeek: Record<string, WeightMeasurement | null>,
+): string {
+  if (!week.has_measurements || !detail?.measurement) {
+    return "No entry this week";
+  }
+  const priorWeek = findClosestEarlierMeasuredWeek(weeks, week.week_start);
+  const prior = priorWeek
+    ? measurementByWeek[priorWeek.week_start]
+    : undefined;
+  if (prior == null) return "Logged this week";
+  if (detail.measurement.weight == null || prior.weight == null) {
+    return "Logged this week";
+  }
+  const delta = detail.measurement.weight - prior.weight;
+  const formatted = `${delta > 0 ? "+" : ""}${delta.toFixed(1)}`;
+  return `Logged · ${formatted} since last week`;
 }
 
 function initialsFromFullName(fullName: string): string {
@@ -56,35 +102,24 @@ function firstName(m: MemberListItem): string {
   return name.split(/\s+/)[0] ?? name;
 }
 
-function formatLastLogged(weekStart: string): string {
-  const [year, month, day] = weekStart.split("-").map(Number);
-  const date = new Date(year, month - 1, day);
-  return date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
-}
-
-function deltaLabel(delta: number): string {
-  if (delta === 0) return "No change";
-  const formatted = `${delta > 0 ? "+" : ""}${delta.toFixed(1)}`;
-  return `${formatted} since last week`;
-}
-
-function deltaColor(delta: number): string {
-  if (delta === 0) return "rgba(26,22,19,0.45)";
-  return delta < 0 ? "#6a9a63" : "var(--brand-orange-dark)";
-}
-
 export default function CoachReviewPage() {
   const supabase = useMemo(() => createClient(), []);
   const accessTokenRef = useRef<string | null>(null);
-  const weekStart = useMemo(() => getWeekStart(), []);
 
   const [members, setMembers] = useState<MemberListItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [selectedMemberId, setSelectedMemberId] = useState<string | null>(null);
 
+  const [weeks, setWeeks] = useState<WeekSummary[]>([]);
+  const [weeksLoading, setWeeksLoading] = useState(false);
+  const [weeksError, setWeeksError] = useState<string | null>(null);
+
+  const [expandedWeekStart, setExpandedWeekStart] = useState<string | null>(
+    null,
+  );
   const [detailCache, setDetailCache] = useState<
-    Record<string, MemberDetailCache>
+    Record<string, WeekDetailCache>
   >({});
   const [measurementByWeek, setMeasurementByWeek] = useState<
     Record<string, WeightMeasurement | null>
@@ -92,8 +127,9 @@ export default function CoachReviewPage() {
   const measurementByWeekRef = useRef(measurementByWeek);
   measurementByWeekRef.current = measurementByWeek;
 
-  const [detailLoading, setDetailLoading] = useState<string | null>(null);
-  const [detailError, setDetailError] = useState<string | null>(null);
+  const [expandLoading, setExpandLoading] = useState<string | null>(null);
+  const [expandError, setExpandError] = useState<string | null>(null);
+  const [openSections, setOpenSections] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     let cancelled = false;
@@ -134,6 +170,7 @@ export default function CoachReviewPage() {
     };
   }, [supabase]);
 
+  // Reset and load weeks list when selected member changes
   useEffect(() => {
     if (!selectedMemberId) return;
 
@@ -143,52 +180,96 @@ export default function CoachReviewPage() {
     const memberId = selectedMemberId;
     let cancelled = false;
 
-    async function fetchDetail() {
-      setDetailLoading(memberId);
-      setDetailError(null);
+    setWeeks([]);
+    setDetailCache({});
+    setMeasurementByWeek({});
+    setOpenSections(new Set());
+    setExpandedWeekStart(null);
+    setExpandError(null);
+    setWeeksError(null);
+    setWeeksLoading(true);
+
+    async function loadWeeks() {
       try {
-        const [plan, tracker, measurement, weeks] = await Promise.all([
-          getWeeklyBasePlan(weekStart, token!, memberId).catch(() => null),
-          getWeeklyTracker(weekStart, token!, memberId).catch(() => null),
-          getWeightMeasurement(weekStart, token!, memberId).catch(() => null),
-          getWeeksList(token!, memberId),
-        ]);
-
+        const list = await getWeeksList(token!, memberId);
         if (cancelled) return;
+        setWeeks(list);
+        if (list.length > 0) {
+          setExpandedWeekStart(list[0].week_start);
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setWeeksError(
+            err instanceof Error
+              ? err.message
+              : "Unable to load member weeks.",
+          );
+        }
+      } finally {
+        if (!cancelled) setWeeksLoading(false);
+      }
+    }
 
+    void loadWeeks();
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedMemberId]);
+
+  // Fetch week detail when expanded (and missing from cache)
+  useEffect(() => {
+    if (!selectedMemberId || !expandedWeekStart) return;
+    if (detailCache[expandedWeekStart]) return;
+
+    const token = accessTokenRef.current;
+    if (!token) return;
+
+    const memberId = selectedMemberId;
+    const weekStart = expandedWeekStart;
+    const week = weeks.find((w) => w.week_start === weekStart);
+    if (!week) return;
+
+    let cancelled = false;
+
+    async function fetchDetail() {
+      setExpandLoading(weekStart);
+      setExpandError(null);
+      try {
         const priorWeek = findClosestEarlierMeasuredWeek(weeks, weekStart);
-        const priorKey = priorWeek
-          ? measurementCacheKey(memberId, priorWeek.week_start)
-          : null;
+        const priorKey = priorWeek?.week_start;
         const priorAlreadyCached =
           priorKey != null && priorKey in measurementByWeekRef.current;
 
-        const priorMeasurement =
-          priorWeek && !priorAlreadyCached
-            ? await getWeightMeasurement(
-                priorWeek.week_start,
-                token!,
-                memberId,
-              ).catch(() => null)
-            : priorKey != null
-              ? (measurementByWeekRef.current[priorKey] ?? null)
-              : null;
+        const [plan, tracker, measurement, priorMeasurement] =
+          await Promise.all([
+            getWeeklyBasePlan(weekStart, token!, memberId).catch(() => null),
+            getWeeklyTracker(weekStart, token!, memberId).catch(() => null),
+            getWeightMeasurement(weekStart, token!, memberId).catch(
+              () => null,
+            ),
+            priorWeek && !priorAlreadyCached
+              ? getWeightMeasurement(
+                  priorWeek.week_start,
+                  token!,
+                  memberId,
+                ).catch(() => null)
+              : Promise.resolve(
+                  priorKey != null
+                    ? (measurementByWeekRef.current[priorKey] ?? null)
+                    : null,
+                ),
+          ]);
 
         if (cancelled) return;
 
         setDetailCache((prev) => ({
           ...prev,
-          [memberId]: {
-            plan,
-            tracker,
-            measurement,
-            priorWeekStart: priorWeek?.week_start ?? null,
-          },
+          [weekStart]: { plan, tracker, measurement },
         }));
 
         setMeasurementByWeek((prev) => {
           const next = { ...prev };
-          next[measurementCacheKey(memberId, weekStart)] = measurement;
+          next[weekStart] = measurement;
           if (priorKey != null) {
             next[priorKey] = priorAlreadyCached
               ? prev[priorKey]
@@ -198,14 +279,14 @@ export default function CoachReviewPage() {
         });
       } catch (err) {
         if (!cancelled) {
-          setDetailError(
+          setExpandError(
             err instanceof Error
               ? err.message
-              : "Unable to load member details.",
+              : "Unable to load week details.",
           );
         }
       } finally {
-        if (!cancelled) setDetailLoading(null);
+        if (!cancelled) setExpandLoading(null);
       }
     }
 
@@ -213,9 +294,28 @@ export default function CoachReviewPage() {
     return () => {
       cancelled = true;
     };
-    // detailCache intentionally omitted — used for render after fetch, not to skip refetch
+    // detailCache intentionally omitted — only fetch when missing for expandedWeekStart
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedMemberId, weekStart]);
+  }, [expandedWeekStart, weeks, selectedMemberId]);
+
+  function toggleWeek(weekStart: string) {
+    setExpandedWeekStart((current) =>
+      current === weekStart ? null : weekStart,
+    );
+  }
+
+  function toggleSectionDetail(weekStart: string, key: HistorySectionKey) {
+    const id = `${weekStart}:${key}`;
+    setOpenSections((current) => {
+      const next = new Set(current);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  }
 
   if (loading) {
     return (
@@ -226,23 +326,6 @@ export default function CoachReviewPage() {
   }
 
   const active = members.find((m) => m.id === selectedMemberId) ?? null;
-  const detail = active ? detailCache[active.id] : undefined;
-  const isDetailLoading = active != null && detailLoading === active.id;
-
-  const daysLogged = countTrackerDaysLogged(detail?.tracker ?? null);
-  const pct = Math.round((daysLogged / 7) * 100);
-
-  const currentMeasurement = detail?.measurement ?? null;
-  const priorMeasurement =
-    active && detail?.priorWeekStart
-      ? (measurementByWeek[
-          measurementCacheKey(active.id, detail.priorWeekStart)
-        ] ?? null)
-      : null;
-  const weightDelta =
-    currentMeasurement?.weight != null && priorMeasurement?.weight != null
-      ? currentMeasurement.weight - priorMeasurement.weight
-      : null;
 
   return (
     <div className="flex flex-1 flex-col gap-4 px-5 py-6 md:mx-auto md:w-full md:max-w-[960px] md:px-10 md:py-10">
@@ -362,108 +445,182 @@ export default function CoachReviewPage() {
                 </div>
               </div>
 
-              {isDetailLoading && (
+              {weeksLoading && (
                 <div className="flex items-center justify-center rounded-[20px] border border-border bg-card py-12 shadow-[0_12px_26px_-18px_rgba(17,17,17,0.16)]">
                   <HeartLoader size={96} />
                 </div>
               )}
 
-              {detailError && !isDetailLoading && !detail && (
-                <p className="text-xs text-brand-orange-dark">{detailError}</p>
+              {weeksError && !weeksLoading && (
+                <p className="text-xs text-brand-orange-dark">{weeksError}</p>
               )}
 
-              {detail && !isDetailLoading && (
-                <>
-                  {/* Food Plan */}
-                  <div className="rounded-[20px] border border-border bg-card p-5 shadow-[0_12px_26px_-18px_rgba(17,17,17,0.16)]">
-                    <div className="mb-3.5 flex items-center gap-3">
-                      <span className="flex h-[38px] w-[38px] shrink-0 items-center justify-center rounded-full bg-brand-gradient text-white">
-                        <PlanIcon className="h-4 w-4" />
-                      </span>
-                      <h2 className="font-heading text-base uppercase tracking-wide text-foreground">
-                        Food Plan
-                      </h2>
-                    </div>
-                    <p className="text-[13.5px] font-semibold text-foreground">
-                      {(() => {
-                        const { filled, total } = countMealSlotsFilled(
-                          detail.plan,
-                        );
-                        return `${filled}/${total} meals filled in`;
-                      })()}
-                    </p>
-                  </div>
+              {!weeksLoading && !weeksError && weeks.length === 0 && (
+                <p className="text-sm text-muted">
+                  No weeks logged yet for this member.
+                </p>
+              )}
 
-                  {/* Success Tracker */}
-                  <div className="rounded-[20px] border border-border bg-card p-5 shadow-[0_12px_26px_-18px_rgba(17,17,17,0.16)]">
-                    <div className="mb-3.5 flex items-center gap-3">
-                      <span className="flex h-[38px] w-[38px] shrink-0 items-center justify-center rounded-full bg-brand-gradient text-white">
-                        <ClipboardCheckIcon className="h-4 w-4" />
-                      </span>
-                      <h2 className="font-heading text-base uppercase tracking-wide text-foreground">
-                        Success Tracker
-                      </h2>
-                    </div>
-                    <div className="mb-2 flex flex-wrap items-center justify-between gap-1.5">
-                      <p className="text-[13.5px] font-semibold text-foreground">
-                        {daysLogged} of 7 days logged
-                      </p>
-                    </div>
-                    <div className="h-2 overflow-hidden rounded-full bg-black/[0.07]">
+              {!weeksLoading && weeks.length > 0 && (
+                <div className="flex flex-col gap-2.5">
+                  {weeks.map((week) => {
+                    const expanded = expandedWeekStart === week.week_start;
+                    const status = computeStatus(week);
+                    const statusStyle = STATUS_STYLES[status.key];
+                    const detail = detailCache[week.week_start];
+                    const isExpandLoading = expandLoading === week.week_start;
+
+                    const trackerDays = countTrackerDaysLogged(
+                      detail?.tracker ?? null,
+                    );
+                    const { filled: mealsFilled, total: mealsTotal } =
+                      countMealSlotsFilled(detail?.plan ?? null);
+
+                    const sections: {
+                      key: HistorySectionKey;
+                      title: string;
+                      summary: string;
+                      icon: ReactNode;
+                    }[] = [
+                      {
+                        key: "food",
+                        title: "Food Plan",
+                        summary: `${mealsFilled}/${mealsTotal} meals filled in`,
+                        icon: <PlanIcon className="h-3.5 w-3.5 text-white" />,
+                      },
+                      {
+                        key: "tracker",
+                        title: "Success Tracker",
+                        summary: `${trackerDays} of 7 days logged`,
+                        icon: (
+                          <ClipboardCheckIcon className="h-3.5 w-3.5 text-white" />
+                        ),
+                      },
+                      {
+                        key: "measurements",
+                        title: "Weight & Measurements",
+                        summary: measurementSummary(
+                          week,
+                          detail,
+                          weeks,
+                          measurementByWeek,
+                        ),
+                        icon: <RulerIcon className="h-3.5 w-3.5 text-white" />,
+                      },
+                    ];
+
+                    return (
                       <div
-                        className="h-full rounded-full bg-brand-gradient"
-                        style={{ width: `${pct}%` }}
-                      />
-                    </div>
-                  </div>
-
-                  {/* Measurements */}
-                  <div className="rounded-[20px] border border-border bg-card p-5 shadow-[0_12px_26px_-18px_rgba(17,17,17,0.16)]">
-                    <div className="mb-3.5 flex items-center gap-3">
-                      <span className="flex h-[38px] w-[38px] shrink-0 items-center justify-center rounded-full bg-brand-gradient text-white">
-                        <ChartIcon className="h-4 w-4" />
-                      </span>
-                      <h2 className="font-heading text-base uppercase tracking-wide text-foreground">
-                        Weight &amp; Measurements
-                      </h2>
-                    </div>
-                    {currentMeasurement == null ? (
-                      <p className="text-[13.5px] font-semibold text-foreground">
-                        No entry this week
-                      </p>
-                    ) : currentMeasurement.weight == null ? (
-                      <>
-                        <div className="mb-1.5 flex items-baseline gap-3">
-                          <span className="font-heading text-[26px] text-foreground">
-                            —
+                        key={week.week_start}
+                        className="overflow-hidden rounded-[18px] border border-border bg-card shadow-[0_10px_22px_-16px_rgba(17,17,17,0.16)]"
+                      >
+                        <button
+                          type="button"
+                          onClick={() => toggleWeek(week.week_start)}
+                          className="flex w-full cursor-pointer items-center gap-3 px-[18px] py-4 text-left"
+                        >
+                          <span
+                            className="flex h-[34px] w-[34px] shrink-0 items-center justify-center rounded-full"
+                            style={{
+                              background: expanded
+                                ? "var(--brand-gradient)"
+                                : "var(--tip-bg)",
+                            }}
+                          >
+                            <RulerIcon
+                              className={`h-3.5 w-3.5 ${expanded ? "text-white" : "text-tip-text"}`}
+                            />
                           </span>
-                        </div>
-                        <p className="text-xs font-medium text-muted">
-                          No weight logged
-                        </p>
-                      </>
-                    ) : (
-                      <>
-                        <div className="mb-1.5 flex items-baseline gap-3">
-                          <span className="font-heading text-[26px] text-foreground">
-                            {currentMeasurement.weight}
+                          <span className="min-w-0 flex-1 truncate font-heading text-[15px] uppercase tracking-wide text-foreground">
+                            {formatWeekRange(week.week_start)}
                           </span>
-                          {weightDelta != null && (
+                          <span
+                            className="flex shrink-0 items-center gap-1.5 rounded-full px-[11px] py-[5px]"
+                            style={{ background: statusStyle.bg }}
+                          >
                             <span
-                              className="text-[13px] font-bold"
-                              style={{ color: deltaColor(weightDelta) }}
+                              className="h-1.5 w-1.5 rounded-full"
+                              style={{ background: statusStyle.dot }}
+                            />
+                            <span
+                              className="text-[11px] font-bold tracking-wide"
+                              style={{ color: statusStyle.color }}
                             >
-                              {deltaLabel(weightDelta)}
+                              {status.label}
                             </span>
-                          )}
-                        </div>
-                        <p className="text-xs font-medium text-muted">
-                          Last logged {formatLastLogged(weekStart)}
-                        </p>
-                      </>
-                    )}
-                  </div>
-                </>
+                          </span>
+                          <ChevronDownIcon
+                            className={`h-4 w-4 shrink-0 text-muted transition-transform ${expanded ? "rotate-180" : ""}`}
+                          />
+                        </button>
+
+                        {expanded && (
+                          <div className="px-[18px] pb-5">
+                            <div className="mb-4 h-px bg-border" />
+                            {isExpandLoading || (!detail && !expandError) ? (
+                              <p className="text-xs font-medium text-muted">
+                                Loading week details…
+                              </p>
+                            ) : expandError && !detail ? (
+                              <p className="text-xs text-brand-orange-dark">
+                                {expandError}
+                              </p>
+                            ) : detail ? (
+                              <div className="flex flex-col gap-2.5">
+                                {sections.map((section) => {
+                                  const isSectionOpen = openSections.has(
+                                    `${week.week_start}:${section.key}`,
+                                  );
+                                  return (
+                                    <div key={section.key}>
+                                      <button
+                                        type="button"
+                                        onClick={() =>
+                                          toggleSectionDetail(
+                                            week.week_start,
+                                            section.key,
+                                          )
+                                        }
+                                        aria-expanded={isSectionOpen}
+                                        className="flex w-full cursor-pointer items-center gap-3 rounded-[14px] border border-border bg-background px-4 py-3.5 text-left"
+                                      >
+                                        <span className="flex h-[30px] w-[30px] shrink-0 items-center justify-center rounded-full bg-brand-gradient">
+                                          {section.icon}
+                                        </span>
+                                        <div className="min-w-0 flex-1">
+                                          <p className="text-[12.5px] font-bold text-foreground">
+                                            {section.title}
+                                          </p>
+                                          <p className="mt-0.5 text-xs font-medium text-muted">
+                                            {section.summary}
+                                          </p>
+                                        </div>
+                                        <span className="whitespace-nowrap text-xs font-bold text-brand-orange-dark">
+                                          {isSectionOpen ? "Hide" : "View →"}
+                                        </span>
+                                      </button>
+
+                                      {isSectionOpen && (
+                                        <div className="mt-2 rounded-[14px] border border-border bg-card p-4">
+                                          <SectionDetail
+                                            sectionKey={section.key}
+                                            plan={detail.plan}
+                                            tracker={detail.tracker}
+                                            measurement={detail.measurement}
+                                          />
+                                        </div>
+                                      )}
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            ) : null}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
               )}
             </div>
           </div>
