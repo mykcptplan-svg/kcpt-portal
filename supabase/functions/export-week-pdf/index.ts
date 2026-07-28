@@ -58,7 +58,7 @@ function formatWeekRange(weekStart: string): string {
     "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
   ];
   const fmt = (d: Date) => months[d.getUTCMonth()] + " " + d.getUTCDate();
-  return fmt(monday) + " – " + fmt(sunday);
+  return fmt(monday) + " - " + fmt(sunday);
 }
 
 function coerceNonNegotiables(raw: unknown): string[] {
