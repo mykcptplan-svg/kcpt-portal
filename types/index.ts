@@ -48,7 +48,6 @@ export type WeightMeasurement = {
   weight: number | null;
   waist: number | null;
   hips: number | null;
-  chest: number | null;
   arm: number | null;
   thigh: number | null;
   calve: number | null;

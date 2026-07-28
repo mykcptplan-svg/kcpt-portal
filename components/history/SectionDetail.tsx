@@ -239,9 +239,6 @@ function MeasurementsDetail({
       {measurement.hips != null && (
         <StatChip label="Hips" value={String(measurement.hips)} unit="in" />
       )}
-      {measurement.chest != null && (
-        <StatChip label="Chest" value={String(measurement.chest)} unit="in" />
-      )}
       {measurement.arm != null && (
         <StatChip label="Arm" value={String(measurement.arm)} unit="in" />
       )}

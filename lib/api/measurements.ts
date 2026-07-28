@@ -20,7 +20,6 @@
  *       weight: 70,
  *       waist: 80,
  *       hips: 95,
- *       chest: 100,
  *       arm: null,
  *       thigh: null,
  *       calve: null,

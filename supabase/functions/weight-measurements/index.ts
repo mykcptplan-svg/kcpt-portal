@@ -177,13 +177,12 @@ Deno.serve(async (req: Request) => {
   }
 
   const metrics: Record<
-    "weight" | "waist" | "hips" | "chest" | "arm" | "thigh" | "calve",
+    "weight" | "waist" | "hips" | "arm" | "thigh" | "calve",
     number | null
   > = {
     weight: null,
     waist: null,
     hips: null,
-    chest: null,
     arm: null,
     thigh: null,
     calve: null,
@@ -193,7 +192,6 @@ Deno.serve(async (req: Request) => {
     "weight",
     "waist",
     "hips",
-    "chest",
     "arm",
     "thigh",
     "calve",
@@ -228,7 +226,6 @@ Deno.serve(async (req: Request) => {
         weight: metrics.weight,
         waist: metrics.waist,
         hips: metrics.hips,
-        chest: metrics.chest,
         arm: metrics.arm,
         thigh: metrics.thigh,
         calve: metrics.calve,

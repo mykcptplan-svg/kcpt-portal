@@ -22,7 +22,6 @@ type Entry = {
   weight: number | null;
   waist: number | null;
   hips: number | null;
-  chest: number | null;
 };
 
 type FormState = {
@@ -30,7 +29,6 @@ type FormState = {
   lbs: string;
   waist: string;
   hips: string;
-  chest: string;
 };
 
 type ExtraFormState = {
@@ -74,7 +72,7 @@ function stoneLbsFromTotal(totalLbs: number): { stone: number; lbs: number } {
 }
 
 function emptyForm(): FormState {
-  return { stone: "", lbs: "", waist: "", hips: "", chest: "" };
+  return { stone: "", lbs: "", waist: "", hips: "" };
 }
 
 function emptyExtraForm(): ExtraFormState {
@@ -90,7 +88,6 @@ function formFromEntry(entry: Entry | null | undefined): FormState {
     lbs: weightParts != null ? String(weightParts.lbs) : "",
     waist: entry.waist != null ? String(entry.waist) : "",
     hips: entry.hips != null ? String(entry.hips) : "",
-    chest: entry.chest != null ? String(entry.chest) : "",
   };
 }
 
@@ -108,14 +105,12 @@ function entryFromRow(row: {
   weight: number | null;
   waist: number | null;
   hips: number | null;
-  chest: number | null;
 }): Entry {
   return {
     week_start: row.week_start,
     weight: row.weight,
     waist: row.waist,
     hips: row.hips,
-    chest: row.chest,
   };
 }
 
@@ -231,7 +226,6 @@ export default function MeasurementsPage() {
         : null;
       const waist = parsePositive(value.waist);
       const hips = parsePositive(value.hips);
-      const chest = parsePositive(value.chest);
       const arm = parsePositive(value.arm);
       const thigh = parsePositive(value.thigh);
       const calve = parsePositive(value.calve);
@@ -240,7 +234,6 @@ export default function MeasurementsPage() {
         (weight != null && weight > 0) ||
         waist != null ||
         hips != null ||
-        chest != null ||
         arm != null ||
         thigh != null ||
         calve != null;
@@ -254,7 +247,6 @@ export default function MeasurementsPage() {
           weight: weight != null && weight > 0 ? weight : null,
           waist,
           hips,
-          chest,
           arm,
           thigh,
           calve,
@@ -267,7 +259,6 @@ export default function MeasurementsPage() {
         weight: weight != null && weight > 0 ? weight : null,
         waist,
         hips,
-        chest,
       };
       setEntries((prev) => {
         const idx = prev.findIndex((e) => e.week_start === weekStart);
@@ -428,7 +419,6 @@ export default function MeasurementsPage() {
               { key: "lbs", label: "Lbs", placeholder: "e.g. 6", unit: "lbs" },
               { key: "waist", label: "Waist", placeholder: "e.g. 36.5", unit: "in" },
               { key: "hips", label: "Hips", placeholder: "e.g. 40", unit: "in" },
-              { key: "chest", label: "Chest", placeholder: "e.g. 43.5", unit: "in" },
             ] as const
           ).map((field) =>
             showForm ? (
