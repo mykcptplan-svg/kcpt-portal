@@ -7,12 +7,15 @@ import { usePathname } from "next/navigation";
 import {
   BellIcon,
   ChartIcon,
+  HistoryIcon,
   HomeIcon,
   MoreIcon,
   PlanIcon,
   ProfileIcon,
+  RulerIcon,
   TrackerIcon,
   UsersIcon,
+  UtensilsIcon,
 } from "@/components/icons";
 import { useProfile } from "@/lib/context/ProfileContext";
 
@@ -44,6 +47,24 @@ const baseNavItems: NavItem[] = [
     icon: <ProfileIcon className="h-5 w-5" />,
   },
 ];
+
+const measurementsItem: NavItem = {
+  label: "Measurements",
+  href: "/measurements",
+  icon: <RulerIcon className="h-5 w-5" />,
+};
+
+const historyItem: NavItem = {
+  label: "History",
+  href: "/history",
+  icon: <HistoryIcon className="h-5 w-5" />,
+};
+
+const eveningMealsItem: NavItem = {
+  label: "Evening Meals",
+  href: "/evening-meals",
+  icon: <UtensilsIcon className="h-5 w-5" />,
+};
 
 const coachReviewItem: NavItem = {
   label: "Coach Review",
@@ -91,16 +112,20 @@ export default function NavShell({ children }: { children: ReactNode }) {
     href === "/" ? pathname === "/" : pathname.startsWith(href);
 
   const extraNavItems = useMemo(() => {
-    if (loading) return [];
-
     const role = profile?.role ?? "member";
-    const extras: NavItem[] = [];
+    const extras: NavItem[] = [
+      measurementsItem,
+      historyItem,
+      eveningMealsItem,
+    ];
 
-    if (role === "coach" || role === "admin") {
-      extras.push(coachReviewItem);
-    }
-    if (role === "admin") {
-      extras.push(adminPanelItem);
+    if (!loading) {
+      if (role === "coach" || role === "admin") {
+        extras.push(coachReviewItem);
+      }
+      if (role === "admin") {
+        extras.push(adminPanelItem);
+      }
     }
 
     return extras;
@@ -112,7 +137,11 @@ export default function NavShell({ children }: { children: ReactNode }) {
   );
 
   const moreActive =
-    pathname.startsWith("/coach-review") || pathname.startsWith("/admin");
+    pathname.startsWith("/measurements") ||
+    pathname.startsWith("/history") ||
+    pathname.startsWith("/evening-meals") ||
+    pathname.startsWith("/coach-review") ||
+    pathname.startsWith("/admin");
 
   return (
     <div className="flex min-h-full flex-1 bg-background">
