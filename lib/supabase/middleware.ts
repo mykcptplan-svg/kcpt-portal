@@ -46,7 +46,12 @@ export async function updateSession(request: NextRequest) {
   if (!user && !isLogin && !isSetPassword) {
     const redirectUrl = request.nextUrl.clone();
     redirectUrl.pathname = "/login";
-    return NextResponse.redirect(redirectUrl);
+    const redirectResponse = NextResponse.redirect(redirectUrl);
+    redirectResponse.headers.set(
+      "Cache-Control",
+      "no-store, no-cache, must-revalidate",
+    );
+    return redirectResponse;
   }
 
   if (user && isLogin) {
@@ -56,5 +61,12 @@ export async function updateSession(request: NextRequest) {
   }
 
   // Authenticated users may stay on /set-password (invite session).
+  if (!isLogin && !isSetPassword) {
+    supabaseResponse.headers.set(
+      "Cache-Control",
+      "no-store, no-cache, must-revalidate",
+    );
+  }
+
   return supabaseResponse;
 }

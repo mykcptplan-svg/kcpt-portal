@@ -1,7 +1,6 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
 import { LogOutIcon } from "@/components/icons";
 import InstallAppCard from "@/components/profile/InstallAppCard";
 import { useProfile } from "@/lib/context/ProfileContext";
@@ -17,7 +16,6 @@ function initialsFromName(fullName: string): string {
 
 export default function ProfilePage() {
   const supabase = useMemo(() => createClient(), []);
-  const router = useRouter();
   const { profile, loading } = useProfile();
   const [signingOut, setSigningOut] = useState(false);
   const [darkMode, setDarkMode] = useState(
@@ -42,7 +40,7 @@ export default function ProfilePage() {
   async function handleLogOut() {
     setSigningOut(true);
     await supabase.auth.signOut();
-    router.push("/login");
+    window.location.replace("/login");
   }
 
   const displayName = loading
