@@ -150,8 +150,24 @@ export default function NavShell({ children }: { children: ReactNode }) {
       </aside>
 
       {/* Main content */}
-      <div className="flex min-w-0 flex-1 flex-col pb-28 md:pb-0">
-        <header className="flex items-center justify-between px-5 py-4 md:hidden">
+      <div className="relative flex min-w-0 flex-1 flex-col overflow-hidden pb-28 md:pb-0">
+        <div
+          aria-hidden
+          className="pointer-events-none absolute -right-[140px] -top-[160px] z-0 h-[480px] w-[480px] rounded-full"
+          style={{
+            background:
+              "radial-gradient(circle, rgba(251,147,58,0.14) 0%, rgba(236,74,49,0.05) 45%, rgba(250,248,245,0) 72%)",
+          }}
+        />
+        <div
+          aria-hidden
+          className="pointer-events-none absolute -left-[100px] bottom-[-120px] z-0 h-[360px] w-[360px] rounded-full"
+          style={{
+            background:
+              "radial-gradient(circle, rgba(247,162,53,0.1) 0%, rgba(250,248,245,0) 70%)",
+          }}
+        />
+        <header className="relative z-10 flex items-center justify-between px-5 py-4 md:hidden">
           <Image
             src="/brand/wordmark.png"
             alt="KCPT"
@@ -180,7 +196,7 @@ export default function NavShell({ children }: { children: ReactNode }) {
             )}
           </div>
         </header>
-        <main className="flex flex-1 flex-col">{children}</main>
+        <main className="relative z-10 flex flex-1 flex-col">{children}</main>
       </div>
 
       {/* Mobile More sheet */}
