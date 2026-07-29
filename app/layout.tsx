@@ -1,5 +1,6 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Anton, Caveat, Inter } from "next/font/google";
+import ServiceWorkerRegister from "@/components/ServiceWorkerRegister";
 import "./globals.css";
 import { THEME_STORAGE_KEY } from "@/lib/theme";
 
@@ -27,6 +28,18 @@ const caveat = Caveat({
 export const metadata: Metadata = {
   title: "KCPT Portal",
   description: "KCPT member portal",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "default",
+    title: "My KCPT Plan",
+  },
+  icons: {
+    apple: "/icons/apple-touch-icon.png",
+  },
+};
+
+export const viewport: Viewport = {
+  themeColor: "#fb933a",
 };
 
 export default function RootLayout({
@@ -44,6 +57,7 @@ export default function RootLayout({
         <script dangerouslySetInnerHTML={{ __html: themeBootstrapScript }} />
       </head>
       <body className="flex min-h-full flex-col bg-background text-foreground">
+        <ServiceWorkerRegister />
         {children}
       </body>
     </html>
