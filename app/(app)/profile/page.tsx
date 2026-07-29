@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { LogOutIcon } from "@/components/icons";
+import InstallAppCard from "@/components/profile/InstallAppCard";
 import { useProfile } from "@/lib/context/ProfileContext";
 import { createClient } from "@/lib/supabase/client";
 import { setStoredTheme } from "@/lib/theme";
@@ -105,6 +106,8 @@ export default function ProfilePage() {
           </button>
         </div>
       </div>
+
+      <InstallAppCard />
 
       <button
         type="button"
