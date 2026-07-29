@@ -17,6 +17,7 @@ import {
   UsersIcon,
   UtensilsIcon,
 } from "@/components/icons";
+import DesktopSiteBanner from "@/components/DesktopSiteBanner";
 import { useProfile } from "@/lib/context/ProfileContext";
 
 type NavItem = {
@@ -225,6 +226,9 @@ export default function NavShell({ children }: { children: ReactNode }) {
             )}
           </div>
         </header>
+        <div className="relative z-10 px-5 pt-2 md:px-10">
+          <DesktopSiteBanner />
+        </div>
         <main className="relative z-10 flex flex-1 flex-col">{children}</main>
       </div>
 
