@@ -353,12 +353,13 @@ export default function MeasurementsPage() {
 
       <TipsCard
         title="Weight Tips"
-        intro="If you're going to weigh yourself, here's how to get the most accurate picture of your progress:"
+        intro="If you choose to weigh yourself, these tips will help you get the most accurate picture of your progress:"
         items={[
           "Weigh yourself on Monday and Friday mornings.",
           "Weigh yourself after a wee, before eating or drinking, naked.",
           "Use the same scales in the same spot in the house every time.",
-          "Your weight will fluctuate from day to day, and that's completely normal. They are not an indication of body fat.",
+          "Your weight will fluctuate daily, that's normal and nothing to do with body fat.",
+          "If the scales affect your mindset, remember they're completely optional. Progress photos, measurements, how your clothes fit and how you feel are all equally valuable ways to measure success.",
           "Assess your progress over time, not from one weigh-in or even one week. Always look at the overall trend rather than individual numbers.",
         ]}
       />
@@ -374,7 +375,7 @@ export default function MeasurementsPage() {
 
       <TipsCard
         title="Other Great Ways to Measure Progress"
-        intro="Remember, the scales are only one way to measure progress."
+        intro="Remember, the scales tell lies. Don't let them dictate your mood. They're notorious for hiding progress, so always look at the bigger picture."
         items={[
           "Progress photos are a fantastic way to see changes over time — take them every 4 weeks, alongside your measurements.",
           "My favourite way to measure progress is by choosing one favourite item of clothing and trying it on every couple of weeks. Often you'll notice your clothes fitting differently before you see a big change on the scales.",
@@ -391,7 +392,7 @@ export default function MeasurementsPage() {
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-3">
               <h2 className="font-heading text-base uppercase tracking-wide text-foreground">
-                {hasSavedEntry ? "This Week's Entry" : "Log New Entry"}
+                {hasSavedEntry ? "This Week's Entry" : "Update Your Progress"}
               </h2>
               {hasSavedEntry && !isEditing && (
                 <button
@@ -403,6 +404,12 @@ export default function MeasurementsPage() {
                 </button>
               )}
             </div>
+            {!hasSavedEntry && (
+              <p className="mt-1 text-[12px] text-muted">
+                You can log your weight weekly if you wish. Body measurements
+                are best taken every 4 weeks for a more meaningful comparison.
+              </p>
+            )}
             {hasSavedEntry && !isEditing && (
               <p className="mt-1 text-[12px] text-muted">
                 Only edit if you made a mistake — this won&apos;t create a new

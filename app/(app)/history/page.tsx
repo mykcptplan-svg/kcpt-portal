@@ -275,12 +275,13 @@ export default function HistoryPage() {
           History
         </h1>
         <p className="mt-0.5 font-script text-xl font-bold text-brand-orange-dark">
-          Every week tells a story.
+          Consistency isn&apos;t built in one perfect week. It&apos;s built by
+          stacking good weeks together.
         </p>
       </div>
       <p className="text-[13px] font-medium leading-[1.5] text-muted">
-        Tap a week to see how your Food Plan, Success Tracker, and Measurements
-        came together.
+        Everything you&apos;ve completed is saved here, so you can look back,
+        celebrate your progress and spot patterns over time.
       </p>
 
       {loadError && (
