@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { DownloadIcon } from "@/components/icons";
+import PillarInfoButton from "@/components/tracker/PillarInfoButton";
 
 interface BeforeInstallPromptEvent extends Event {
   prompt(): Promise<void>;
@@ -26,6 +27,39 @@ function isIosDevice(): boolean {
 
 const cardClassName =
   "rounded-[20px] border border-border bg-card p-4 shadow-[0_12px_26px_-18px_rgba(17,17,17,0.16)]";
+
+const installInfoContent = (
+  <div className="space-y-2">
+    <p>
+      <span className="font-bold">iOS:</span> Tap Share → scroll / “View More” →
+      Add to Home Screen
+    </p>
+    <p>
+      <span className="font-bold">Android (Chrome):</span> Tap the three-dot menu
+      → Install app (or “Add to Home Screen”) → Install → done
+    </p>
+  </div>
+);
+
+function InstallAppHeader() {
+  return (
+    <>
+      <div className="mb-3 flex items-center gap-1.5">
+        <h2 className="font-heading text-base uppercase tracking-wide text-foreground">
+          Install App
+        </h2>
+        <PillarInfoButton
+          label="Install App"
+          popoverClassName="w-[260px]"
+          text={installInfoContent}
+        />
+      </div>
+      <p className="mb-3 text-sm font-medium text-muted">
+        For the full experience, add the app to your Home Screen.
+      </p>
+    </>
+  );
+}
 
 export default function InstallAppCard() {
   const [standalone, setStandalone] = useState(false);
@@ -77,9 +111,7 @@ export default function InstallAppCard() {
   if (ios) {
     return (
       <div className={cardClassName}>
-        <h2 className="mb-3 font-heading text-base uppercase tracking-wide text-foreground">
-          Install App
-        </h2>
+        <InstallAppHeader />
         <p className="text-sm font-medium leading-relaxed text-muted">
           Tap the Share button, then{" "}
           <span className="font-bold text-foreground">Add to Home Screen</span>.
@@ -92,12 +124,7 @@ export default function InstallAppCard() {
 
   return (
     <div className={cardClassName}>
-      <h2 className="mb-3 font-heading text-base uppercase tracking-wide text-foreground">
-        Install App
-      </h2>
-      <p className="mb-3 text-sm font-medium text-muted">
-        Add KCPT Portal to your home screen for quicker access.
-      </p>
+      <InstallAppHeader />
       <button
         type="button"
         onClick={handleInstall}
