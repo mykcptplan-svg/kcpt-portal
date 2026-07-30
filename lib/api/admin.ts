@@ -14,6 +14,7 @@ export type MemberListItem = {
   status: "active" | "revoked";
   coach_review_enabled: boolean;
   role: "member";
+  created_at: string;
 };
 
 export type ManageMemberBody = {

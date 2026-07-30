@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import HeartLoader from "@/components/HeartLoader";
-import { ChevronDownIcon, UsersIcon } from "@/components/icons";
+import { ChevronDownIcon, DownloadIcon, UsersIcon } from "@/components/icons";
 import {
   getMembersList,
   inviteMember,
@@ -16,6 +16,7 @@ import {
   updateQuote,
   type MotivationalQuote,
 } from "@/lib/api/quotes";
+import { downloadMembersCsv } from "@/lib/membersCsv";
 import { createClient } from "@/lib/supabase/client";
 
 function initialsFromFullName(fullName: string): string {
@@ -424,14 +425,25 @@ export default function AdminPage() {
 
         {membersOpen && (
           <>
-            <div className="px-5 pb-3">
+            <div className="flex items-center gap-2.5 px-5 pb-3">
               <input
                 type="search"
                 value={memberQuery}
                 onChange={(e) => setMemberQuery(e.target.value)}
                 placeholder="Search by name or email…"
-                className="w-full rounded-[10px] border border-border bg-background px-[13px] py-3 text-[14px] font-semibold text-foreground outline-none focus:border-brand-orange"
+                className="min-w-0 flex-1 rounded-[10px] border border-border bg-background px-[13px] py-3 text-[14px] font-semibold text-foreground outline-none focus:border-brand-orange"
               />
+              <button
+                type="button"
+                onClick={() => downloadMembersCsv(filteredMembers)}
+                disabled={filteredMembers.length === 0}
+                className="inline-flex shrink-0 cursor-pointer items-center gap-2 rounded-[10px] border-[1.5px] border-border px-3.5 py-3 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                <DownloadIcon className="h-4 w-4 text-muted" />
+                <span className="font-heading text-[13px] uppercase tracking-wide text-muted">
+                  Export CSV
+                </span>
+              </button>
             </div>
 
             {filteredMembers.length === 0 ? (

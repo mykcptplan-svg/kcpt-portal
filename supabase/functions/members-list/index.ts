@@ -3,9 +3,9 @@
  *
  * Returns member profiles for Admin Panel / Coach Review.
  *
- * Uses the caller's JWT only (no service_role). Email is denormalized on
- * profiles so auth.users is never queried. Coach/admin RLS select already
- * allows reading all profiles; coaches are filtered in-app to
+ * Uses the caller's JWT only (no service_role). Email and created_at are
+ * denormalized on profiles so auth.users is never queried. Coach/admin RLS
+ * select already allows reading all profiles; coaches are filtered in-app to
  * coach_review_enabled === true before the response is returned.
  */
 
@@ -26,6 +26,7 @@ type MemberRow = {
   status: string;
   coach_review_enabled: boolean;
   role: string;
+  created_at: string;
 };
 
 function jsonResponse(body: Record<string, unknown>, status: number): Response {
@@ -100,7 +101,7 @@ Deno.serve(async (req: Request) => {
 
   const { data: rows, error: selectError } = await callerClient
     .from("profiles")
-    .select("id, full_name, email, status, coach_review_enabled, role")
+    .select("id, full_name, email, status, coach_review_enabled, role, created_at")
     .eq("role", "member")
     .order("full_name", { ascending: true });
 
@@ -116,6 +117,7 @@ Deno.serve(async (req: Request) => {
     status: row.status,
     coach_review_enabled: row.coach_review_enabled,
     role: "member" as const,
+    created_at: row.created_at,
   }));
 
   if (callerProfile.role === "coach") {
