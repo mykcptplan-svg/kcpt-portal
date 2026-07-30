@@ -120,8 +120,7 @@ export default function ProfilePage() {
       </button>
 
       <div className="mt-1 text-center">
-        <p className="text-xs font-semibold text-muted">KCPT Portal v1.0</p>
-        <p className="mt-1.5 text-[12.5px] font-medium text-muted">
+        <p className="text-[12.5px] font-medium text-muted">
           Need help?{" "}
           <a
             href="mailto:kellycafferyclients@gmail.com"
