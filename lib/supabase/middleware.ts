@@ -42,8 +42,12 @@ export async function updateSession(request: NextRequest) {
   const pathname = request.nextUrl.pathname;
   const isLogin = pathname.startsWith("/login");
   const isSetPassword = pathname.startsWith("/set-password");
+  // /reset-password page (Ivan): recovery link lands here with hash tokens;
+  // allow unauthenticated access and keep authenticated recovery sessions.
+  const isResetPassword = pathname.startsWith("/reset-password");
+  const isAuthPage = isLogin || isSetPassword || isResetPassword;
 
-  if (!user && !isLogin && !isSetPassword) {
+  if (!user && !isAuthPage) {
     const redirectUrl = request.nextUrl.clone();
     redirectUrl.pathname = "/login";
     const redirectResponse = NextResponse.redirect(redirectUrl);
@@ -60,8 +64,8 @@ export async function updateSession(request: NextRequest) {
     return NextResponse.redirect(redirectUrl);
   }
 
-  // Authenticated users may stay on /set-password (invite session).
-  if (!isLogin && !isSetPassword) {
+  // Authenticated users may stay on /set-password (invite) and /reset-password (recovery).
+  if (!isAuthPage) {
     supabaseResponse.headers.set(
       "Cache-Control",
       "no-store, no-cache, must-revalidate",

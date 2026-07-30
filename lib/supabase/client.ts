@@ -1,8 +1,9 @@
 /**
  * Browser Supabase client — AUTH ONLY.
  *
- * Allowed: signInWithPassword, updateUser, getSession, onAuthStateChange, signOut
- * (and other auth.* methods used from client components).
+ * Allowed: signInWithPassword, resetPasswordForEmail, setSession, updateUser,
+ * getSession, onAuthStateChange, signOut (and other auth.* methods used from
+ * client components).
  *
  * Forbidden: .from(...) table queries (or any direct database access).
  * All reads/writes go through Edge Functions via lib/api/ with
