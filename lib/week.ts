@@ -50,3 +50,34 @@ export function formatWeekRange(weekStart: string): string {
     d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
   return `${fmt(monday)} – ${fmt(sunday)}`;
 }
+
+/**
+ * Return the Monday of the calendar week after the week containing `date`.
+ */
+export function getNextWeekStart(date: Date = new Date()): string {
+  const currentMonday = getWeekStart(date);
+  const [year, month, day] = currentMonday.split("-").map(Number);
+  const next = new Date(year, month - 1, day + 7);
+  return formatWeekStart(next);
+}
+
+const WEEK_START_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+
+/**
+ * Parse a `?week_start=` query value. Returns the string only if it is a real
+ * local calendar Monday (YYYY-MM-DD); otherwise null.
+ */
+export function parseWeekStartParam(raw: string | null): string | null {
+  if (!raw || !WEEK_START_PATTERN.test(raw)) return null;
+  const [year, month, day] = raw.split("-").map(Number);
+  const date = new Date(year, month - 1, day);
+  if (
+    date.getFullYear() !== year ||
+    date.getMonth() !== month - 1 ||
+    date.getDate() !== day
+  ) {
+    return null;
+  }
+  if (getWeekStart(date) !== raw) return null;
+  return raw;
+}

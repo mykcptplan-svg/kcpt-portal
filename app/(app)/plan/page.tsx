@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import MealSectionCard from "@/components/plan/MealSectionCard";
 import AutosaveStatus from "@/components/AutosaveStatus";
 import HeartLoader from "@/components/HeartLoader";
@@ -18,13 +19,31 @@ import { getWeeklyBasePlan, saveWeeklyBasePlan } from "@/lib/api/basePlan";
 import { useProfile } from "@/lib/context/ProfileContext";
 import { useDebouncedSave } from "@/lib/hooks/useDebouncedSave";
 import { createClient } from "@/lib/supabase/client";
-import { getWeekStart } from "@/lib/week";
+import { getWeekStart, parseWeekStartParam } from "@/lib/week";
 import type { EveningMealEntry } from "@/types";
 import type { NutritionApproach } from "@/types/plan";
 
 export default function PlanPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex flex-1 items-center justify-center px-6 py-10">
+          <HeartLoader size={192} />
+        </div>
+      }
+    >
+      <PlanPageInner />
+    </Suspense>
+  );
+}
+
+function PlanPageInner() {
+  const searchParams = useSearchParams();
   const supabase = useMemo(() => createClient(), []);
-  const weekStart = useMemo(() => getWeekStart(), []);
+  const weekStart = useMemo(
+    () => parseWeekStartParam(searchParams.get("week_start")) ?? getWeekStart(),
+    [searchParams],
+  );
   const { profile } = useProfile();
   const isRevoked = profile?.status === "revoked";
 
@@ -46,6 +65,8 @@ export default function PlanPage() {
     let cancelled = false;
 
     async function load() {
+      setLoading(true);
+      setLoadError(null);
       try {
         const {
           data: { session },
@@ -57,19 +78,33 @@ export default function PlanPage() {
         accessTokenRef.current = session.access_token;
 
         const plan = await getWeeklyBasePlan(weekStart, session.access_token);
-        if (cancelled || !plan) return;
+        if (cancelled) return;
+
+        if (!plan) {
+          setNutritionApproach("orange_base");
+          setBreakfasts(["", ""]);
+          setLunches(["", ""]);
+          setTriggerSnacks(["", ""]);
+          setDesserts([""]);
+          eveningMealsRef.current = [];
+          return;
+        }
 
         if (
           plan.nutrition_approach === "orange_base" ||
           plan.nutrition_approach === "meal_bank"
         ) {
           setNutritionApproach(plan.nutrition_approach);
+        } else {
+          setNutritionApproach("orange_base");
         }
-        if (plan.breakfasts.length) setBreakfasts(plan.breakfasts);
-        if (plan.lunches.length) setLunches(plan.lunches);
-        if (plan.trigger_snacks.length) setTriggerSnacks(plan.trigger_snacks);
-        if (plan.desserts.length) setDesserts(plan.desserts);
-        eveningMealsRef.current = plan.evening_meals;
+        setBreakfasts(plan.breakfasts.length ? plan.breakfasts : ["", ""]);
+        setLunches(plan.lunches.length ? plan.lunches : ["", ""]);
+        setTriggerSnacks(
+          plan.trigger_snacks.length ? plan.trigger_snacks : ["", ""],
+        );
+        setDesserts(plan.desserts.length ? plan.desserts : [""]);
+        eveningMealsRef.current = plan.evening_meals ?? [];
       } catch (err) {
         if (!cancelled) {
           setLoadError(err instanceof Error ? err.message : "Unable to load plan.");
@@ -208,7 +243,7 @@ export default function PlanPage() {
       )}
 
       <Link
-        href="/evening-meals"
+                      href="/evening-meals"
         className="flex items-center gap-3.5 rounded-[18px] border border-border bg-card p-4 shadow-[0_12px_26px_-18px_rgba(17,17,17,0.16)] transition-colors hover:border-brand-orange/40"
       >
         <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-brand-gradient text-white">

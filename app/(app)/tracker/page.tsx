@@ -1,6 +1,7 @@
 "use client";
 
-import { Fragment, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, Suspense, useEffect, useMemo, useRef, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import AutosaveStatus from "@/components/AutosaveStatus";
 import HeartLoader from "@/components/HeartLoader";
 import {
@@ -13,10 +14,11 @@ import PillarEntrySheet, {
 import PillarInfoButton from "@/components/tracker/PillarInfoButton";
 import { getWeeklyTracker, saveWeeklyTracker } from "@/lib/api/tracker";
 import { useProfile } from "@/lib/context/ProfileContext";
+import { ensureNextWeekDraft } from "@/lib/ensureNextWeekDraft";
 import { useDebouncedSave } from "@/lib/hooks/useDebouncedSave";
 import { createClient } from "@/lib/supabase/client";
 import { formatPillarCellValue } from "@/lib/trackerStats";
-import { getWeekStart } from "@/lib/week";
+import { getWeekStart, parseWeekStartParam } from "@/lib/week";
 import type { DailyMetrics } from "@/types";
 
 const DAY_LABELS = ["M", "T", "W", "T", "F", "S", "S"];
@@ -113,8 +115,27 @@ function normalizeDailyMetrics(raw: unknown): DailyMetrics {
 }
 
 export default function TrackerPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex flex-1 items-center justify-center px-6 py-10">
+          <HeartLoader size={192} />
+        </div>
+      }
+    >
+      <TrackerPageInner />
+    </Suspense>
+  );
+}
+
+function TrackerPageInner() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const supabase = useMemo(() => createClient(), []);
-  const weekStart = useMemo(() => getWeekStart(), []);
+  const weekStart = useMemo(
+    () => parseWeekStartParam(searchParams.get("week_start")) ?? getWeekStart(),
+    [searchParams],
+  );
   const { profile } = useProfile();
   const isRevoked = profile?.status === "revoked";
 
@@ -124,6 +145,8 @@ export default function TrackerPage() {
   const [nextWeekFocus, setNextWeekFocus] = useState<string[]>(["", "", ""]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [startingNextWeek, setStartingNextWeek] = useState(false);
+  const [nextWeekError, setNextWeekError] = useState<string | null>(null);
   const [activeCell, setActiveCell] = useState<{
     metric: PillarEntryMetric;
     dayIdx: number;
@@ -134,6 +157,8 @@ export default function TrackerPage() {
     let cancelled = false;
 
     async function load() {
+      setLoading(true);
+      setLoadError(null);
       try {
         const {
           data: { session },
@@ -145,7 +170,15 @@ export default function TrackerPage() {
         accessTokenRef.current = session.access_token;
 
         const tracker = await getWeeklyTracker(weekStart, session.access_token);
-        if (cancelled || !tracker) return;
+        if (cancelled) return;
+
+        if (!tracker) {
+          setNonNegotiables(["", "", ""]);
+          setDailyMetrics(emptyMetrics());
+          setWins(["", "", ""]);
+          setNextWeekFocus(["", "", ""]);
+          return;
+        }
 
         const names = tracker.non_negotiables ?? [];
         setNonNegotiables([0, 1, 2].map((i) => names[i] ?? ""));
@@ -168,6 +201,26 @@ export default function TrackerPage() {
       cancelled = true;
     };
   }, [supabase, weekStart]);
+
+  async function handleStartNextWeek() {
+    const token = accessTokenRef.current;
+    if (!token) {
+      setNextWeekError("Not logged in.");
+      return;
+    }
+    setStartingNextWeek(true);
+    setNextWeekError(null);
+    try {
+      const nextWeekStart = await ensureNextWeekDraft(token);
+      router.push(`/plan?week_start=${nextWeekStart}`);
+    } catch (err) {
+      setNextWeekError(
+        err instanceof Error ? err.message : "Unable to start next week's plan.",
+      );
+    } finally {
+      setStartingNextWeek(false);
+    }
+  }
 
   function setNumericCell(
     key: "protein" | "water" | "steps",
@@ -558,6 +611,24 @@ export default function TrackerPage() {
               </div>
             ))}
           </div>
+        </div>
+
+        <div className="mb-4">
+          <button
+            type="button"
+            onClick={() => void handleStartNextWeek()}
+            disabled={isRevoked || startingNextWeek}
+            className="w-full cursor-pointer rounded-[14px] bg-brand-gradient px-5 py-3.5 transition-transform hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0"
+          >
+            <span className="font-heading text-[13px] uppercase tracking-wide text-white">
+              {startingNextWeek
+                ? "Starting…"
+                : "Start Next Week's Plan"}
+            </span>
+          </button>
+          {nextWeekError && (
+            <p className="mt-2 text-xs text-brand-orange-dark">{nextWeekError}</p>
+          )}
         </div>
 
         <p className="mt-4 text-[12px] font-medium leading-snug text-muted">
