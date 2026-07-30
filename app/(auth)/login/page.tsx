@@ -25,7 +25,7 @@ export default function LoginPage() {
         password,
       });
       if (signInError) {
-        setError(signInError.message || "Could not log in.");
+        setError("Incorrect email or password. Please try again.");
         return;
       }
       router.push("/");
