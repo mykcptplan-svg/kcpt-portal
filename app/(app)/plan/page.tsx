@@ -321,7 +321,7 @@ function PlanPageInner() {
       )}
 
       <Link
-                      href="/evening-meals"
+        href={`/evening-meals?week_start=${weekStart}`}
         className="flex items-center gap-3.5 rounded-[18px] border border-border bg-card p-4 shadow-[0_12px_26px_-18px_rgba(17,17,17,0.16)] transition-colors hover:border-brand-orange/40"
       >
         <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-brand-gradient text-white">

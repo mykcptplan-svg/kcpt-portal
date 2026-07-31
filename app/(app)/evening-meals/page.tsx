@@ -1,14 +1,21 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Suspense, useEffect, useMemo, useRef, useState } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import DayAccordion from "@/components/evening-meals/DayAccordion";
 import AutosaveStatus from "@/components/AutosaveStatus";
 import HeartLoader from "@/components/HeartLoader";
+import WeekToggle from "@/components/WeekToggle";
 import { BulbIcon, UtensilsIcon } from "@/components/icons";
 import { getWeeklyBasePlan, saveWeeklyBasePlan } from "@/lib/api/basePlan";
+import { discardNextWeekDraft } from "@/lib/api/nextWeekDraft";
 import { useDebouncedSave } from "@/lib/hooks/useDebouncedSave";
 import { createClient } from "@/lib/supabase/client";
-import { getWeekStart } from "@/lib/week";
+import {
+  getNextWeekStart,
+  getWeekStart,
+  parseWeekStartParam,
+} from "@/lib/week";
 import type { EveningApproach } from "@/types/plan";
 
 const DAY_NAMES = [
@@ -27,6 +34,14 @@ function emptyEntries(): DayEntry[] {
   return DAY_NAMES.map(() => ({ meal: "", approach: null }));
 }
 
+const DEFAULT_PRESERVED = {
+  nutrition_approach: "orange_base",
+  breakfasts: [] as string[],
+  lunches: [] as string[],
+  trigger_snacks: [] as string[],
+  desserts: [] as string[],
+};
+
 // Preserved verbatim from whatever My Food Plan last saved — this page only
 // owns evening_meals and must never clobber the rest of the row.
 type PreservedFields = {
@@ -38,27 +53,48 @@ type PreservedFields = {
 };
 
 export default function EveningMealsPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex flex-1 items-center justify-center px-6 py-10">
+          <HeartLoader size={192} />
+        </div>
+      }
+    >
+      <EveningMealsPageInner />
+    </Suspense>
+  );
+}
+
+function EveningMealsPageInner() {
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
   const supabase = useMemo(() => createClient(), []);
-  const weekStart = useMemo(() => getWeekStart(), []);
+  const nextWeekStart = useMemo(() => getNextWeekStart(), []);
+  const weekStart = useMemo(
+    () => parseWeekStartParam(searchParams.get("week_start")) ?? getWeekStart(),
+    [searchParams],
+  );
+  const viewingNextWeek = weekStart === nextWeekStart;
 
   const [entries, setEntries] = useState<DayEntry[]>(emptyEntries);
   const [expandedIndex, setExpandedIndex] = useState(0);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [hasNextWeekDraft, setHasNextWeekDraft] = useState(false);
+  const [discarding, setDiscarding] = useState(false);
+  const [discardError, setDiscardError] = useState<string | null>(null);
 
   const accessTokenRef = useRef<string | null>(null);
-  const preservedRef = useRef<PreservedFields>({
-    nutrition_approach: "orange_base",
-    breakfasts: [],
-    lunches: [],
-    trigger_snacks: [],
-    desserts: [],
-  });
+  const preservedRef = useRef<PreservedFields>({ ...DEFAULT_PRESERVED });
 
   useEffect(() => {
     let cancelled = false;
 
     async function load() {
+      setLoading(true);
+      setLoadError(null);
       try {
         const {
           data: { session },
@@ -70,7 +106,13 @@ export default function EveningMealsPage() {
         accessTokenRef.current = session.access_token;
 
         const plan = await getWeeklyBasePlan(weekStart, session.access_token);
-        if (cancelled || !plan) return;
+        if (cancelled) return;
+
+        if (!plan) {
+          preservedRef.current = { ...DEFAULT_PRESERVED };
+          setEntries(emptyEntries());
+          return;
+        }
 
         preservedRef.current = {
           nutrition_approach: plan.nutrition_approach,
@@ -103,6 +145,60 @@ export default function EveningMealsPage() {
       cancelled = true;
     };
   }, [supabase, weekStart]);
+
+  // Same draft-existence check as Plan (evening meals live on weekly_base_plans).
+  useEffect(() => {
+    if (viewingNextWeek) {
+      setHasNextWeekDraft(true);
+      return;
+    }
+
+    let cancelled = false;
+
+    async function checkDraft() {
+      try {
+        const {
+          data: { session },
+        } = await supabase.auth.getSession();
+        if (!session || cancelled) return;
+        const draftPlan = await getWeeklyBasePlan(
+          nextWeekStart,
+          session.access_token,
+        );
+        if (!cancelled) setHasNextWeekDraft(draftPlan !== null);
+      } catch {
+        if (!cancelled) setHasNextWeekDraft(false);
+      }
+    }
+
+    void checkDraft();
+    return () => {
+      cancelled = true;
+    };
+  }, [supabase, nextWeekStart, viewingNextWeek]);
+
+  async function handleDiscardDraft() {
+    const token = accessTokenRef.current;
+    if (!token) {
+      setDiscardError("Not logged in.");
+      return;
+    }
+    setDiscarding(true);
+    setDiscardError(null);
+    try {
+      await discardNextWeekDraft(token);
+      setHasNextWeekDraft(false);
+      if (viewingNextWeek) {
+        router.push(pathname);
+      }
+    } catch (err) {
+      setDiscardError(
+        err instanceof Error ? err.message : "Unable to discard draft.",
+      );
+    } finally {
+      setDiscarding(false);
+    }
+  }
 
   function updateEntry(index: number, patch: Partial<DayEntry>) {
     setEntries((prev) => {
@@ -161,6 +257,17 @@ export default function EveningMealsPage() {
           </p>
         </div>
       </div>
+
+      {hasNextWeekDraft && (
+        <WeekToggle
+          pathname={pathname}
+          nextWeekStart={nextWeekStart}
+          viewingNextWeek={viewingNextWeek}
+          onDiscard={() => void handleDiscardDraft()}
+          discarding={discarding}
+          discardError={discardError}
+        />
+      )}
 
       <p className="text-[13px] font-medium leading-relaxed text-muted">
         Tap to log your evening meals and how you&apos;ll approach them this
