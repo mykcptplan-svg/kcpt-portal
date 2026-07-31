@@ -52,35 +52,36 @@ export default function WeekToggle({
           </Link>
         </div>
 
-        {confirming ? (
-          <div className="flex flex-wrap items-center gap-2 text-[12px] font-semibold">
-            <span className="text-muted">Discard this draft?</span>
+        {viewingNextWeek &&
+          (confirming ? (
+            <div className="flex flex-wrap items-center gap-2 text-[12px] font-semibold">
+              <span className="text-muted">Discard this draft?</span>
+              <button
+                type="button"
+                onClick={onDiscard}
+                disabled={discarding}
+                className="text-brand-orange-dark underline decoration-dotted underline-offset-2 disabled:opacity-60"
+              >
+                {discarding ? "Discarding…" : "Yes, discard"}
+              </button>
+              <button
+                type="button"
+                onClick={() => setConfirming(false)}
+                disabled={discarding}
+                className="text-muted underline decoration-dotted underline-offset-2 disabled:opacity-60"
+              >
+                Cancel
+              </button>
+            </div>
+          ) : (
             <button
               type="button"
-              onClick={onDiscard}
-              disabled={discarding}
-              className="text-brand-orange-dark underline decoration-dotted underline-offset-2 disabled:opacity-60"
+              onClick={() => setConfirming(true)}
+              className="text-[12px] font-semibold text-muted underline decoration-dotted underline-offset-2 transition-colors hover:text-brand-orange-dark"
             >
-              {discarding ? "Discarding…" : "Yes, discard"}
+              Discard draft
             </button>
-            <button
-              type="button"
-              onClick={() => setConfirming(false)}
-              disabled={discarding}
-              className="text-muted underline decoration-dotted underline-offset-2 disabled:opacity-60"
-            >
-              Cancel
-            </button>
-          </div>
-        ) : (
-          <button
-            type="button"
-            onClick={() => setConfirming(true)}
-            className="text-[12px] font-semibold text-muted underline decoration-dotted underline-offset-2 transition-colors hover:text-brand-orange-dark"
-          >
-            Discard draft
-          </button>
-        )}
+          ))}
       </div>
 
       {viewingNextWeek && (
