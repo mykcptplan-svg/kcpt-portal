@@ -261,8 +261,8 @@ function PlanPageInner() {
       <AutosaveStatus status={status} />
 
       <p className="text-[12px] font-medium leading-snug text-muted">
-        Your food plan is saved automatically. Every Monday you can create a
-        fresh plan for the week ahead, and you can view your previous plans
+        Your food plan is saved automatically. Get a head start on next week
+        anytime from the Sunday Reset on your Tracker, and view previous plans
         anytime in your History.
       </p>
 

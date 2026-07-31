@@ -714,6 +714,10 @@ function TrackerPageInner() {
               </span>
             </button>
           )}
+          <p className="mt-2 text-center text-[12px] font-medium leading-snug text-muted">
+            This opens next week&apos;s Food Plan and Tracker together, not just
+            the Tracker.
+          </p>
           {nextWeekError && (
             <p className="mt-2 text-xs text-brand-orange-dark">{nextWeekError}</p>
           )}
