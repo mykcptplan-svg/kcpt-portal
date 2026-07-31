@@ -2,10 +2,11 @@
 
 import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import MealSectionCard from "@/components/plan/MealSectionCard";
 import AutosaveStatus from "@/components/AutosaveStatus";
 import HeartLoader from "@/components/HeartLoader";
+import WeekToggle from "@/components/WeekToggle";
 import {
   ArrowRightIcon,
   BreakfastIcon,
@@ -16,10 +17,11 @@ import {
   UtensilsIcon,
 } from "@/components/icons";
 import { getWeeklyBasePlan, saveWeeklyBasePlan } from "@/lib/api/basePlan";
+import { discardNextWeekDraft } from "@/lib/api/nextWeekDraft";
 import { useProfile } from "@/lib/context/ProfileContext";
 import { useDebouncedSave } from "@/lib/hooks/useDebouncedSave";
 import { createClient } from "@/lib/supabase/client";
-import { getWeekStart, parseWeekStartParam } from "@/lib/week";
+import { getNextWeekStart, getWeekStart, parseWeekStartParam } from "@/lib/week";
 import type { EveningMealEntry } from "@/types";
 import type { NutritionApproach } from "@/types/plan";
 
@@ -38,12 +40,16 @@ export default function PlanPage() {
 }
 
 function PlanPageInner() {
+  const router = useRouter();
+  const pathname = usePathname();
   const searchParams = useSearchParams();
   const supabase = useMemo(() => createClient(), []);
+  const nextWeekStart = useMemo(() => getNextWeekStart(), []);
   const weekStart = useMemo(
     () => parseWeekStartParam(searchParams.get("week_start")) ?? getWeekStart(),
     [searchParams],
   );
+  const viewingNextWeek = weekStart === nextWeekStart;
   const { profile } = useProfile();
   const isRevoked = profile?.status === "revoked";
 
@@ -56,6 +62,9 @@ function PlanPageInner() {
 
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [hasNextWeekDraft, setHasNextWeekDraft] = useState(false);
+  const [discarding, setDiscarding] = useState(false);
+  const [discardError, setDiscardError] = useState<string | null>(null);
   const accessTokenRef = useRef<string | null>(null);
   // Evening Meals owns this field; we only round-trip it so autosaving the
   // rest of the plan never clobbers it.
@@ -120,6 +129,64 @@ function PlanPageInner() {
     };
   }, [supabase, weekStart]);
 
+  // Independent of the main plan load above: check whether a next-week draft
+  // exists at all, so the WeekToggle knows whether to render. Skipped while
+  // already viewing the draft (existence is trivially true — you navigated
+  // here via the toggle or "Start Next Week's Plan").
+  useEffect(() => {
+    if (viewingNextWeek) {
+      setHasNextWeekDraft(true);
+      return;
+    }
+
+    let cancelled = false;
+
+    async function checkDraft() {
+      try {
+        const {
+          data: { session },
+        } = await supabase.auth.getSession();
+        if (!session || cancelled) return;
+        const draftPlan = await getWeeklyBasePlan(
+          nextWeekStart,
+          session.access_token,
+        );
+        if (!cancelled) setHasNextWeekDraft(draftPlan !== null);
+      } catch {
+        // Non-critical: if this check fails, the toggle just stays hidden.
+        if (!cancelled) setHasNextWeekDraft(false);
+      }
+    }
+
+    void checkDraft();
+    return () => {
+      cancelled = true;
+    };
+  }, [supabase, nextWeekStart, viewingNextWeek]);
+
+  async function handleDiscardDraft() {
+    const accessToken = accessTokenRef.current;
+    if (!accessToken) {
+      setDiscardError("Not logged in.");
+      return;
+    }
+    setDiscarding(true);
+    setDiscardError(null);
+    try {
+      await discardNextWeekDraft(accessToken);
+      setHasNextWeekDraft(false);
+      if (viewingNextWeek) {
+        router.push(pathname);
+      }
+    } catch (err) {
+      setDiscardError(
+        err instanceof Error ? err.message : "Unable to discard draft.",
+      );
+    } finally {
+      setDiscarding(false);
+    }
+  }
+
   const draft = useMemo(
     () => ({ nutritionApproach, breakfasts, lunches, triggerSnacks, desserts }),
     [nutritionApproach, breakfasts, lunches, triggerSnacks, desserts],
@@ -164,6 +231,17 @@ function PlanPageInner() {
           Simple structure. Real results.
         </p>
       </div>
+
+      {hasNextWeekDraft && (
+        <WeekToggle
+          pathname={pathname}
+          nextWeekStart={nextWeekStart}
+          viewingNextWeek={viewingNextWeek}
+          onDiscard={() => void handleDiscardDraft()}
+          discarding={discarding}
+          discardError={discardError}
+        />
+      )}
 
       {isRevoked && (
         <div

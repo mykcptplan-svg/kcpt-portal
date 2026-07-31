@@ -1,9 +1,11 @@
 "use client";
 
 import { Fragment, Suspense, useEffect, useMemo, useRef, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import Link from "next/link";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import AutosaveStatus from "@/components/AutosaveStatus";
 import HeartLoader from "@/components/HeartLoader";
+import WeekToggle from "@/components/WeekToggle";
 import {
   CheckIcon,
   RefreshIcon,
@@ -12,13 +14,14 @@ import PillarEntrySheet, {
   type PillarEntryMetric,
 } from "@/components/tracker/PillarEntrySheet";
 import PillarInfoButton from "@/components/tracker/PillarInfoButton";
+import { discardNextWeekDraft } from "@/lib/api/nextWeekDraft";
 import { getWeeklyTracker, saveWeeklyTracker } from "@/lib/api/tracker";
 import { useProfile } from "@/lib/context/ProfileContext";
 import { ensureNextWeekDraft } from "@/lib/ensureNextWeekDraft";
 import { useDebouncedSave } from "@/lib/hooks/useDebouncedSave";
 import { createClient } from "@/lib/supabase/client";
 import { formatPillarCellValue } from "@/lib/trackerStats";
-import { getWeekStart, parseWeekStartParam } from "@/lib/week";
+import { getNextWeekStart, getWeekStart, parseWeekStartParam } from "@/lib/week";
 import type { DailyMetrics } from "@/types";
 
 const DAY_LABELS = ["M", "T", "W", "T", "F", "S", "S"];
@@ -130,12 +133,15 @@ export default function TrackerPage() {
 
 function TrackerPageInner() {
   const router = useRouter();
+  const pathname = usePathname();
   const searchParams = useSearchParams();
   const supabase = useMemo(() => createClient(), []);
+  const nextWeekStart = useMemo(() => getNextWeekStart(), []);
   const weekStart = useMemo(
     () => parseWeekStartParam(searchParams.get("week_start")) ?? getWeekStart(),
     [searchParams],
   );
+  const viewingNextWeek = weekStart === nextWeekStart;
   const { profile } = useProfile();
   const isRevoked = profile?.status === "revoked";
 
@@ -147,6 +153,9 @@ function TrackerPageInner() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [startingNextWeek, setStartingNextWeek] = useState(false);
   const [nextWeekError, setNextWeekError] = useState<string | null>(null);
+  const [hasNextWeekDraft, setHasNextWeekDraft] = useState(false);
+  const [discarding, setDiscarding] = useState(false);
+  const [discardError, setDiscardError] = useState<string | null>(null);
   const [activeCell, setActiveCell] = useState<{
     metric: PillarEntryMetric;
     dayIdx: number;
@@ -201,6 +210,63 @@ function TrackerPageInner() {
       cancelled = true;
     };
   }, [supabase, weekStart]);
+
+  // Independent of the main tracker load above: check whether a next-week
+  // draft exists at all, so the WeekToggle knows whether to render. Skipped
+  // while already viewing the draft (existence is trivially true).
+  useEffect(() => {
+    if (viewingNextWeek) {
+      setHasNextWeekDraft(true);
+      return;
+    }
+
+    let cancelled = false;
+
+    async function checkDraft() {
+      try {
+        const {
+          data: { session },
+        } = await supabase.auth.getSession();
+        if (!session || cancelled) return;
+        const draftTracker = await getWeeklyTracker(
+          nextWeekStart,
+          session.access_token,
+        );
+        if (!cancelled) setHasNextWeekDraft(draftTracker !== null);
+      } catch {
+        // Non-critical: if this check fails, the toggle just stays hidden.
+        if (!cancelled) setHasNextWeekDraft(false);
+      }
+    }
+
+    void checkDraft();
+    return () => {
+      cancelled = true;
+    };
+  }, [supabase, nextWeekStart, viewingNextWeek]);
+
+  async function handleDiscardDraft() {
+    const token = accessTokenRef.current;
+    if (!token) {
+      setDiscardError("Not logged in.");
+      return;
+    }
+    setDiscarding(true);
+    setDiscardError(null);
+    try {
+      await discardNextWeekDraft(token);
+      setHasNextWeekDraft(false);
+      if (viewingNextWeek) {
+        router.push(pathname);
+      }
+    } catch (err) {
+      setDiscardError(
+        err instanceof Error ? err.message : "Unable to discard draft.",
+      );
+    } finally {
+      setDiscarding(false);
+    }
+  }
 
   async function handleStartNextWeek() {
     const token = accessTokenRef.current;
@@ -314,6 +380,17 @@ function TrackerPageInner() {
           Small wins. Big results.
         </p>
       </div>
+
+      {hasNextWeekDraft && (
+        <WeekToggle
+          pathname={pathname}
+          nextWeekStart={nextWeekStart}
+          viewingNextWeek={viewingNextWeek}
+          onDiscard={() => void handleDiscardDraft()}
+          discarding={discarding}
+          discardError={discardError}
+        />
+      )}
 
       {isRevoked && (
         <div
@@ -614,18 +691,29 @@ function TrackerPageInner() {
         </div>
 
         <div className="mb-4">
-          <button
-            type="button"
-            onClick={() => void handleStartNextWeek()}
-            disabled={isRevoked || startingNextWeek}
-            className="w-full cursor-pointer rounded-[14px] bg-brand-gradient px-5 py-3.5 transition-transform hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0"
-          >
-            <span className="font-heading text-[13px] uppercase tracking-wide text-white">
-              {startingNextWeek
-                ? "Starting…"
-                : "Start Next Week's Plan"}
-            </span>
-          </button>
+          {hasNextWeekDraft ? (
+            <Link
+              href={`${pathname}?week_start=${nextWeekStart}`}
+              className="flex w-full items-center justify-center rounded-[14px] bg-brand-gradient px-5 py-3.5 transition-transform hover:-translate-y-0.5"
+            >
+              <span className="font-heading text-[13px] uppercase tracking-wide text-white">
+                Continue Next Week&apos;s Draft
+              </span>
+            </Link>
+          ) : (
+            <button
+              type="button"
+              onClick={() => void handleStartNextWeek()}
+              disabled={isRevoked || startingNextWeek}
+              className="w-full cursor-pointer rounded-[14px] bg-brand-gradient px-5 py-3.5 transition-transform hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0"
+            >
+              <span className="font-heading text-[13px] uppercase tracking-wide text-white">
+                {startingNextWeek
+                  ? "Starting…"
+                  : "Start Next Week's Plan"}
+              </span>
+            </button>
+          )}
           {nextWeekError && (
             <p className="mt-2 text-xs text-brand-orange-dark">{nextWeekError}</p>
           )}
