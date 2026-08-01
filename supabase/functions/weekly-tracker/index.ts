@@ -356,7 +356,18 @@ Deno.serve(async (req: Request) => {
     );
 
   if (upsertError) {
-    console.error("weekly-tracker: upsert failed", upsertError);
+    const { data: summaryRows, error: profileDiagError } = await callerClient.rpc(
+      "get_own_profile_summary",
+      { uid: user.id },
+    );
+    const summary = Array.isArray(summaryRows) ? summaryRows[0] : summaryRows;
+    console.error("weekly-tracker: upsert failed", {
+      userId: user.id,
+      weekStart: week_start,
+      profileStatus: summary?.status ?? null,
+      profileDiagError: profileDiagError ?? null,
+      upsertError,
+    });
     return jsonResponse({ error: "Unable to save tracker" }, 500);
   }
 
