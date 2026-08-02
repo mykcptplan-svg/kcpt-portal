@@ -23,6 +23,12 @@ export type ManageMemberBody = {
   coach_review_enabled?: boolean;
 };
 
+export type PendingInvite = {
+  email: string;
+  invited_at: string;
+  status: "not_opened" | "incomplete";
+};
+
 const MANAGE_ENDPOINT = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/admin-manage-member`;
 const LIST_ENDPOINT = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/members-list`;
 const INVITE_ENDPOINT = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/invite-member`;
@@ -96,4 +102,20 @@ export async function inviteMember(
   if (!res.ok) {
     throw await errorFromResponse(res, "Unable to send invite");
   }
+}
+
+export async function listPendingInvites(
+  accessToken: string,
+): Promise<PendingInvite[]> {
+  const res = await fetch(INVITE_ENDPOINT, {
+    method: "GET",
+    headers: authHeaders(accessToken),
+  });
+
+  if (!res.ok) {
+    throw await errorFromResponse(res, "Unable to load pending invites");
+  }
+
+  const body = (await res.json()) as { data: PendingInvite[] };
+  return body.data;
 }

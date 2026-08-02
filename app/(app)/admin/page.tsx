@@ -6,8 +6,10 @@ import { ChevronDownIcon, DownloadIcon, UsersIcon } from "@/components/icons";
 import {
   getMembersList,
   inviteMember,
+  listPendingInvites,
   manageMember,
   type MemberListItem,
+  type PendingInvite,
 } from "@/lib/api/admin";
 import {
   createQuote,
@@ -30,11 +32,28 @@ function initialsFromFullName(fullName: string): string {
   return "--";
 }
 
+function pendingStatusLabel(status: PendingInvite["status"]): string {
+  return status === "not_opened"
+    ? "Invite not opened"
+    : "Opened, setup not finished";
+}
+
+function formatInvitedAt(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "—";
+  return d.toLocaleDateString(undefined, {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+  });
+}
+
 export default function AdminPage() {
   const supabase = useMemo(() => createClient(), []);
   const accessTokenRef = useRef<string | null>(null);
 
   const [members, setMembers] = useState<MemberListItem[]>([]);
+  const [pendingInvites, setPendingInvites] = useState<PendingInvite[]>([]);
   const [quotes, setQuotes] = useState<MotivationalQuote[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -44,6 +63,7 @@ export default function AdminPage() {
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviting, setInviting] = useState(false);
   const [inviteError, setInviteError] = useState<string | null>(null);
+  const [resendingEmail, setResendingEmail] = useState<string | null>(null);
 
   const [newQuoteBody, setNewQuoteBody] = useState("");
   const [addingQuote, setAddingQuote] = useState(false);
@@ -53,9 +73,11 @@ export default function AdminPage() {
   const [quoteBusyId, setQuoteBusyId] = useState<string | null>(null);
 
   const [membersOpen, setMembersOpen] = useState(true);
+  const [onHoldOpen, setOnHoldOpen] = useState(false);
   const [quotesOpen, setQuotesOpen] = useState(false);
   const [memberQuery, setMemberQuery] = useState("");
   const [quoteQuery, setQuoteQuery] = useState("");
+  const onHoldOpenInitialized = useRef(false);
 
   const filteredMembers = useMemo(() => {
     const q = memberQuery.trim().toLowerCase();
@@ -78,6 +100,15 @@ export default function AdminPage() {
     setMembers(list);
   }
 
+  async function refreshPendingInvites(token: string) {
+    const list = await listPendingInvites(token);
+    setPendingInvites(list);
+    if (!onHoldOpenInitialized.current) {
+      onHoldOpenInitialized.current = true;
+      setOnHoldOpen(list.length > 0);
+    }
+  }
+
   async function refreshQuotes(token: string) {
     const list = await listQuotes(token);
     setQuotes(list);
@@ -98,6 +129,7 @@ export default function AdminPage() {
         accessTokenRef.current = session.access_token;
         await Promise.all([
           refreshMembers(session.access_token),
+          refreshPendingInvites(session.access_token),
           refreshQuotes(session.access_token),
         ]);
       } catch (err) {
@@ -132,13 +164,37 @@ export default function AdminPage() {
       await inviteMember(token, email);
       setInviteEmail("");
       setShowInviteForm(false);
-      await refreshMembers(token);
+      await Promise.all([
+        refreshMembers(token),
+        refreshPendingInvites(token),
+      ]);
     } catch (err) {
       setInviteError(
         err instanceof Error ? err.message : "Unable to send invite.",
       );
     } finally {
       setInviting(false);
+    }
+  }
+
+  async function handleResendInvite(email: string) {
+    const token = accessTokenRef.current;
+    if (!token) {
+      setActionError("Not logged in.");
+      return;
+    }
+
+    setResendingEmail(email);
+    setActionError(null);
+    try {
+      await inviteMember(token, email);
+      await refreshPendingInvites(token);
+    } catch (err) {
+      setActionError(
+        err instanceof Error ? err.message : "Unable to send invite.",
+      );
+    } finally {
+      setResendingEmail(null);
     }
   }
 
@@ -675,6 +731,122 @@ export default function AdminPage() {
             })}
           </div>
         </div>
+              </>
+            )}
+          </>
+        )}
+      </section>
+
+      <section className="overflow-hidden rounded-[20px] border border-border bg-card shadow-[0_12px_26px_-18px_rgba(17,17,17,0.16)]">
+        <div className={`px-5 pt-[18px] ${onHoldOpen ? "" : "pb-[18px]"}`}>
+          <button
+            type="button"
+            onClick={() => setOnHoldOpen((v) => !v)}
+            aria-expanded={onHoldOpen}
+            className={`flex w-full cursor-pointer items-center gap-3 text-left ${onHoldOpen ? "mb-4" : ""}`}
+          >
+            <span className="flex h-[38px] w-[38px] shrink-0 items-center justify-center rounded-full bg-brand-gradient text-white">
+              <span className="font-heading text-sm text-white">…</span>
+            </span>
+            <h2 className="min-w-0 flex-1 font-heading text-base uppercase tracking-wide text-foreground">
+              On Hold ({pendingInvites.length})
+            </h2>
+            <ChevronDownIcon
+              className={`h-5 w-5 shrink-0 text-muted transition-transform ${
+                onHoldOpen ? "rotate-180" : ""
+              }`}
+            />
+          </button>
+        </div>
+
+        {onHoldOpen && (
+          <>
+            {pendingInvites.length === 0 ? (
+              <p className="px-5 pb-5 text-sm text-muted">No pending invites.</p>
+            ) : (
+              <>
+                <div className="flex flex-col gap-2.5 px-5 pb-5 md:hidden">
+                  {pendingInvites.map((invite) => {
+                    const busy = resendingEmail === invite.email;
+                    return (
+                      <div
+                        key={invite.email}
+                        className="rounded-[18px] border border-border bg-background px-4 py-3.5"
+                      >
+                        <p className="truncate text-[13.5px] font-bold text-foreground">
+                          {invite.email}
+                        </p>
+                        <p className="mt-1 text-xs font-medium text-muted">
+                          Invited {formatInvitedAt(invite.invited_at)}
+                        </p>
+                        <p className="mt-2 text-[11px] font-bold tracking-wide text-muted">
+                          {pendingStatusLabel(invite.status)}
+                        </p>
+                        <button
+                          type="button"
+                          onClick={() => void handleResendInvite(invite.email)}
+                          disabled={busy || resendingEmail !== null}
+                          className="mt-3 w-full cursor-pointer rounded-[10px] border-[1.5px] border-border px-3 py-2.5 text-center transition-transform hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          <span className="font-heading text-[13px] uppercase tracking-wide text-muted">
+                            {busy ? "Sending…" : "Resend"}
+                          </span>
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                <div className="hidden md:block">
+                  <div className="min-w-[640px]">
+                    <div className="grid grid-cols-[2fr_1fr_1.4fr_0.8fr] items-center gap-3 px-5 pb-3">
+                      <span className="text-[11px] font-bold uppercase tracking-wide text-muted">
+                        Email
+                      </span>
+                      <span className="text-[11px] font-bold uppercase tracking-wide text-muted">
+                        Invited
+                      </span>
+                      <span className="text-[11px] font-bold uppercase tracking-wide text-muted">
+                        Status
+                      </span>
+                      <span className="text-[11px] font-bold uppercase tracking-wide text-muted">
+                        Action
+                      </span>
+                    </div>
+
+                    {pendingInvites.map((invite) => {
+                      const busy = resendingEmail === invite.email;
+                      return (
+                        <div
+                          key={invite.email}
+                          className="grid grid-cols-[2fr_1fr_1.4fr_0.8fr] items-center gap-3 border-t border-border px-5 py-3.5"
+                        >
+                          <p className="truncate text-[13.5px] font-bold text-foreground">
+                            {invite.email}
+                          </p>
+                          <p className="text-xs font-medium text-muted">
+                            {formatInvitedAt(invite.invited_at)}
+                          </p>
+                          <p className="text-[11px] font-bold tracking-wide text-muted">
+                            {pendingStatusLabel(invite.status)}
+                          </p>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              void handleResendInvite(invite.email)
+                            }
+                            disabled={busy || resendingEmail !== null}
+                            className="cursor-pointer rounded-[10px] border-[1.5px] border-border px-3 py-2.5 text-center transition-transform hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-60"
+                          >
+                            <span className="font-heading text-[13px] uppercase tracking-wide text-muted">
+                              {busy ? "Sending…" : "Resend"}
+                            </span>
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
               </>
             )}
           </>
