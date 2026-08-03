@@ -50,7 +50,6 @@ function formatInvitedAt(iso: string): string {
 
 export default function AdminPage() {
   const supabase = useMemo(() => createClient(), []);
-  const accessTokenRef = useRef<string | null>(null);
 
   const [members, setMembers] = useState<MemberListItem[]>([]);
   const [pendingInvites, setPendingInvites] = useState<PendingInvite[]>([]);
@@ -95,6 +94,13 @@ export default function AdminPage() {
     return quotes.filter((quote) => quote.body.toLowerCase().includes(q));
   }, [quotes, quoteQuery]);
 
+  async function getAccessToken(): Promise<string | null> {
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+    return session?.access_token ?? null;
+  }
+
   async function refreshMembers(token: string) {
     const list = await getMembersList(token);
     setMembers(list);
@@ -126,7 +132,6 @@ export default function AdminPage() {
           if (!cancelled) setLoadError("Not logged in.");
           return;
         }
-        accessTokenRef.current = session.access_token;
         await Promise.all([
           refreshMembers(session.access_token),
           refreshPendingInvites(session.access_token),
@@ -152,7 +157,7 @@ export default function AdminPage() {
   async function handleSendInvite() {
     const email = inviteEmail.trim();
     if (!email) return;
-    const token = accessTokenRef.current;
+    const token = await getAccessToken();
     if (!token) {
       setInviteError("Not logged in.");
       return;
@@ -178,7 +183,7 @@ export default function AdminPage() {
   }
 
   async function handleResendInvite(email: string) {
-    const token = accessTokenRef.current;
+    const token = await getAccessToken();
     if (!token) {
       setActionError("Not logged in.");
       return;
@@ -199,7 +204,7 @@ export default function AdminPage() {
   }
 
   async function handleToggleCoachReview(member: MemberListItem) {
-    const token = accessTokenRef.current;
+    const token = await getAccessToken();
     if (!token) {
       setActionError("Not logged in.");
       return;
@@ -230,7 +235,7 @@ export default function AdminPage() {
   }
 
   async function handleToggleStatus(member: MemberListItem) {
-    const token = accessTokenRef.current;
+    const token = await getAccessToken();
     if (!token) {
       setActionError("Not logged in.");
       return;
@@ -263,7 +268,7 @@ export default function AdminPage() {
   async function handleAddQuote() {
     const body = newQuoteBody.trim();
     if (!body) return;
-    const token = accessTokenRef.current;
+    const token = await getAccessToken();
     if (!token) {
       setQuoteError("Not logged in.");
       return;
@@ -290,7 +295,7 @@ export default function AdminPage() {
       setQuoteError("Quote text is required.");
       return;
     }
-    const token = accessTokenRef.current;
+    const token = await getAccessToken();
     if (!token) {
       setQuoteError("Not logged in.");
       return;
@@ -315,7 +320,7 @@ export default function AdminPage() {
   }
 
   async function handleToggleQuoteActive(quote: MotivationalQuote) {
-    const token = accessTokenRef.current;
+    const token = await getAccessToken();
     if (!token) {
       setQuoteError("Not logged in.");
       return;
@@ -351,7 +356,7 @@ export default function AdminPage() {
   }
 
   async function handleDeleteQuote(quote: MotivationalQuote) {
-    const token = accessTokenRef.current;
+    const token = await getAccessToken();
     if (!token) {
       setQuoteError("Not logged in.");
       return;
