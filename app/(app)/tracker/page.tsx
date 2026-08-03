@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, Suspense, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, Suspense, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import AutosaveStatus from "@/components/AutosaveStatus";
@@ -160,7 +160,13 @@ function TrackerPageInner() {
     metric: PillarEntryMetric;
     dayIdx: number;
   } | null>(null);
-  const accessTokenRef = useRef<string | null>(null);
+
+  async function getAccessToken(): Promise<string | null> {
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+    return session?.access_token ?? null;
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -176,7 +182,6 @@ function TrackerPageInner() {
           if (!cancelled) setLoadError("Not logged in.");
           return;
         }
-        accessTokenRef.current = session.access_token;
 
         const tracker = await getWeeklyTracker(weekStart, session.access_token);
         if (cancelled) return;
@@ -246,7 +251,7 @@ function TrackerPageInner() {
   }, [supabase, nextWeekStart, viewingNextWeek]);
 
   async function handleDiscardDraft() {
-    const token = accessTokenRef.current;
+    const token = await getAccessToken();
     if (!token) {
       setDiscardError("Not logged in.");
       return;
@@ -269,7 +274,7 @@ function TrackerPageInner() {
   }
 
   async function handleStartNextWeek() {
-    const token = accessTokenRef.current;
+    const token = await getAccessToken();
     if (!token) {
       setNextWeekError("Not logged in.");
       return;
@@ -342,7 +347,7 @@ function TrackerPageInner() {
   const { status, error: saveError } = useDebouncedSave(
     draft,
     async (value) => {
-      const accessToken = accessTokenRef.current;
+      const accessToken = await getAccessToken();
       if (!accessToken) throw new Error("Not logged in.");
       const hasResetContent = [...value.wins, ...value.nextWeekFocus].some(
         (s) => s.trim().length > 0,

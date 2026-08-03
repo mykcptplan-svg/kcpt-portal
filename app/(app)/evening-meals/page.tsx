@@ -86,8 +86,14 @@ function EveningMealsPageInner() {
   const [discarding, setDiscarding] = useState(false);
   const [discardError, setDiscardError] = useState<string | null>(null);
 
-  const accessTokenRef = useRef<string | null>(null);
   const preservedRef = useRef<PreservedFields>({ ...DEFAULT_PRESERVED });
+
+  async function getAccessToken(): Promise<string | null> {
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+    return session?.access_token ?? null;
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -103,7 +109,6 @@ function EveningMealsPageInner() {
           if (!cancelled) setLoadError("Not logged in.");
           return;
         }
-        accessTokenRef.current = session.access_token;
 
         const plan = await getWeeklyBasePlan(weekStart, session.access_token);
         if (cancelled) return;
@@ -178,7 +183,7 @@ function EveningMealsPageInner() {
   }, [supabase, nextWeekStart, viewingNextWeek]);
 
   async function handleDiscardDraft() {
-    const token = accessTokenRef.current;
+    const token = await getAccessToken();
     if (!token) {
       setDiscardError("Not logged in.");
       return;
@@ -211,7 +216,7 @@ function EveningMealsPageInner() {
   const { status, error: saveError } = useDebouncedSave(
     entries,
     async (value) => {
-      const accessToken = accessTokenRef.current;
+      const accessToken = await getAccessToken();
       if (!accessToken) throw new Error("Not logged in.");
 
       const evening_meals = DAY_NAMES.map((day, i) => ({

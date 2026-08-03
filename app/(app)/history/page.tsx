@@ -81,7 +81,6 @@ function measurementSummary(
 
 export default function HistoryPage() {
   const supabase = useMemo(() => createClient(), []);
-  const accessTokenRef = useRef<string | null>(null);
 
   const [weeks, setWeeks] = useState<WeekSummary[]>([]);
   const [loading, setLoading] = useState(true);
@@ -105,6 +104,13 @@ export default function HistoryPage() {
   >(null);
   const [downloadError, setDownloadError] = useState<string | null>(null);
 
+  async function getAccessToken(): Promise<string | null> {
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+    return session?.access_token ?? null;
+  }
+
   useEffect(() => {
     let cancelled = false;
 
@@ -117,7 +123,6 @@ export default function HistoryPage() {
           if (!cancelled) setLoadError("Not logged in.");
           return;
         }
-        accessTokenRef.current = session.access_token;
 
         const list = await getWeeksList(session.access_token);
         if (cancelled) return;
@@ -147,9 +152,6 @@ export default function HistoryPage() {
     if (!expandedWeekStart) return;
     if (detailCache[expandedWeekStart]) return;
 
-    const token = accessTokenRef.current;
-    if (!token) return;
-
     const weekStart = expandedWeekStart;
     const week = weeks.find((w) => w.week_start === weekStart);
     if (!week) return;
@@ -157,6 +159,9 @@ export default function HistoryPage() {
     let cancelled = false;
 
     async function fetchDetail() {
+      const token = await getAccessToken();
+      if (!token || cancelled) return;
+
       setExpandLoading(weekStart);
       setExpandError(null);
       try {
@@ -166,11 +171,11 @@ export default function HistoryPage() {
           priorKey != null && priorKey in measurementByWeekRef.current;
 
         const [plan, tracker, measurement, priorMeasurement] = await Promise.all([
-          getWeeklyBasePlan(weekStart, token!).catch(() => null),
-          getWeeklyTracker(weekStart, token!).catch(() => null),
-          getWeightMeasurement(weekStart, token!).catch(() => null),
+          getWeeklyBasePlan(weekStart, token).catch(() => null),
+          getWeeklyTracker(weekStart, token).catch(() => null),
+          getWeightMeasurement(weekStart, token).catch(() => null),
           priorWeek && !priorAlreadyCached
-            ? getWeightMeasurement(priorWeek.week_start, token!).catch(() => null)
+            ? getWeightMeasurement(priorWeek.week_start, token).catch(() => null)
             : Promise.resolve(
                 priorKey != null
                   ? (measurementByWeekRef.current[priorKey] ?? null)
@@ -234,7 +239,7 @@ export default function HistoryPage() {
   }
 
   async function handleDownloadPdf(weekStart: string) {
-    const token = accessTokenRef.current;
+    const token = await getAccessToken();
     if (!token) {
       setDownloadError("Not logged in.");
       return;

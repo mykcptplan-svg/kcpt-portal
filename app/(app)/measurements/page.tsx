@@ -140,8 +140,14 @@ export default function MeasurementsPage() {
   const [isEditing, setIsEditing] = useState(false);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const accessTokenRef = useRef<string | null>(null);
   const startedEmptyRef = useRef(false);
+
+  async function getAccessToken(): Promise<string | null> {
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+    return session?.access_token ?? null;
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -155,7 +161,6 @@ export default function MeasurementsPage() {
           if (!cancelled) setLoadError("Not logged in.");
           return;
         }
-        accessTokenRef.current = session.access_token;
         const token = session.access_token;
 
         const [currentRow, weeks] = await Promise.all([
@@ -214,7 +219,7 @@ export default function MeasurementsPage() {
   const { status, error: saveError } = useDebouncedSave(
     saveValue,
     async (value) => {
-      const accessToken = accessTokenRef.current;
+      const accessToken = await getAccessToken();
       if (!accessToken) throw new Error("Not logged in.");
 
       const stonePart = parseNonNegative(value.stone);

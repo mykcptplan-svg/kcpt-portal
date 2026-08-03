@@ -65,10 +65,16 @@ function PlanPageInner() {
   const [hasNextWeekDraft, setHasNextWeekDraft] = useState(false);
   const [discarding, setDiscarding] = useState(false);
   const [discardError, setDiscardError] = useState<string | null>(null);
-  const accessTokenRef = useRef<string | null>(null);
   // Evening Meals owns this field; we only round-trip it so autosaving the
   // rest of the plan never clobbers it.
   const eveningMealsRef = useRef<EveningMealEntry[]>([]);
+
+  async function getAccessToken(): Promise<string | null> {
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+    return session?.access_token ?? null;
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -84,7 +90,6 @@ function PlanPageInner() {
           if (!cancelled) setLoadError("Not logged in.");
           return;
         }
-        accessTokenRef.current = session.access_token;
 
         const plan = await getWeeklyBasePlan(weekStart, session.access_token);
         if (cancelled) return;
@@ -165,7 +170,7 @@ function PlanPageInner() {
   }, [supabase, nextWeekStart, viewingNextWeek]);
 
   async function handleDiscardDraft() {
-    const accessToken = accessTokenRef.current;
+    const accessToken = await getAccessToken();
     if (!accessToken) {
       setDiscardError("Not logged in.");
       return;
@@ -195,7 +200,7 @@ function PlanPageInner() {
   const { status, error: saveError } = useDebouncedSave(
     draft,
     async (value) => {
-      const accessToken = accessTokenRef.current;
+      const accessToken = await getAccessToken();
       if (!accessToken) throw new Error("Not logged in.");
       await saveWeeklyBasePlan(
         {

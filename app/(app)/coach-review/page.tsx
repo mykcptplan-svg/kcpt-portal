@@ -104,7 +104,6 @@ function firstName(m: MemberListItem): string {
 
 export default function CoachReviewPage() {
   const supabase = useMemo(() => createClient(), []);
-  const accessTokenRef = useRef<string | null>(null);
 
   const [members, setMembers] = useState<MemberListItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -142,6 +141,13 @@ export default function CoachReviewPage() {
     });
   }, [members, memberQuery]);
 
+  async function getAccessToken(): Promise<string | null> {
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+    return session?.access_token ?? null;
+  }
+
   useEffect(() => {
     let cancelled = false;
 
@@ -154,7 +160,6 @@ export default function CoachReviewPage() {
           if (!cancelled) setLoadError("Not logged in.");
           return;
         }
-        accessTokenRef.current = session.access_token;
 
         const list = await getMembersList(session.access_token);
         if (cancelled) return;
@@ -185,9 +190,6 @@ export default function CoachReviewPage() {
   useEffect(() => {
     if (!selectedMemberId) return;
 
-    const token = accessTokenRef.current;
-    if (!token) return;
-
     const memberId = selectedMemberId;
     let cancelled = false;
 
@@ -201,8 +203,16 @@ export default function CoachReviewPage() {
     setWeeksLoading(true);
 
     async function loadWeeks() {
+      const token = await getAccessToken();
+      if (!token) {
+        if (!cancelled) {
+          setWeeksError("Not logged in.");
+          setWeeksLoading(false);
+        }
+        return;
+      }
       try {
-        const list = await getWeeksList(token!, memberId);
+        const list = await getWeeksList(token, memberId);
         if (cancelled) return;
         setWeeks(list);
         if (list.length > 0) {
@@ -225,15 +235,13 @@ export default function CoachReviewPage() {
     return () => {
       cancelled = true;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedMemberId]);
 
   // Fetch week detail when expanded (and missing from cache)
   useEffect(() => {
     if (!selectedMemberId || !expandedWeekStart) return;
     if (detailCache[expandedWeekStart]) return;
-
-    const token = accessTokenRef.current;
-    if (!token) return;
 
     const memberId = selectedMemberId;
     const weekStart = expandedWeekStart;
@@ -243,6 +251,9 @@ export default function CoachReviewPage() {
     let cancelled = false;
 
     async function fetchDetail() {
+      const token = await getAccessToken();
+      if (!token || cancelled) return;
+
       setExpandLoading(weekStart);
       setExpandError(null);
       try {
@@ -253,15 +264,15 @@ export default function CoachReviewPage() {
 
         const [plan, tracker, measurement, priorMeasurement] =
           await Promise.all([
-            getWeeklyBasePlan(weekStart, token!, memberId).catch(() => null),
-            getWeeklyTracker(weekStart, token!, memberId).catch(() => null),
-            getWeightMeasurement(weekStart, token!, memberId).catch(
+            getWeeklyBasePlan(weekStart, token, memberId).catch(() => null),
+            getWeeklyTracker(weekStart, token, memberId).catch(() => null),
+            getWeightMeasurement(weekStart, token, memberId).catch(
               () => null,
             ),
             priorWeek && !priorAlreadyCached
               ? getWeightMeasurement(
                   priorWeek.week_start,
-                  token!,
+                  token,
                   memberId,
                 ).catch(() => null)
               : Promise.resolve(
