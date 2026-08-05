@@ -83,8 +83,30 @@ export default function NavShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const { profile, loading } = useProfile();
   const [moreOpen, setMoreOpen] = useState(false);
+  const [keyboardOpen, setKeyboardOpen] = useState(false);
   const [showComingSoon, setShowComingSoon] = useState(false);
   const bellWrapRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const vv = window.visualViewport;
+    if (!vv) return;
+
+    function sync() {
+      const viewport = window.visualViewport;
+      if (!viewport) return;
+      const open = window.innerHeight - viewport.height > 150;
+      setKeyboardOpen(open);
+      if (open) setMoreOpen(false);
+    }
+
+    sync();
+    vv.addEventListener("resize", sync);
+    vv.addEventListener("scroll", sync);
+    return () => {
+      vv.removeEventListener("resize", sync);
+      vv.removeEventListener("scroll", sync);
+    };
+  }, []);
 
   useEffect(() => {
     if (!showComingSoon) return;
@@ -268,8 +290,11 @@ export default function NavShell({ children }: { children: ReactNode }) {
 
       {/* Mobile floating bottom nav */}
       <nav
-        className="fixed inset-x-0 bottom-0 z-50 flex justify-center px-4 pb-4 md:hidden"
+        className={`fixed inset-x-0 bottom-0 z-50 flex justify-center px-4 pb-4 transition-transform md:hidden ${
+          keyboardOpen ? "pointer-events-none translate-y-full" : ""
+        }`}
         aria-label="Main"
+        aria-hidden={keyboardOpen}
       >
         <div className="flex w-full max-w-[420px] gap-1 rounded-[20px] border border-border bg-card/92 p-2 shadow-[0_20px_40px_-16px_rgba(17,17,17,0.22)] backdrop-blur-md">
           {baseNavItems.map((item) => {
