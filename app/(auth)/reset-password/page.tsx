@@ -1,14 +1,29 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
+import { Suspense, useEffect, useMemo, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 
 const RESET_LINK_ERROR =
   "Reset link is invalid or expired. Request a new one from the login screen.";
 
 export default function ResetPasswordPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex flex-col items-center">
+          <p className="mt-8 text-sm text-muted">Verifying your link…</p>
+        </div>
+      }
+    >
+      <ResetPasswordPageInner />
+    </Suspense>
+  );
+}
+
+function ResetPasswordPageInner() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const supabase = useMemo(() => createClient(), []);
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
@@ -17,30 +32,20 @@ export default function ResetPasswordPage() {
   const [sessionReady, setSessionReady] = useState(false);
   const [success, setSuccess] = useState(false);
 
-  // Same temporary bridge as /set-password: resetPasswordForEmail() delivers
-  // tokens in the URL hash (implicit flow: #access_token=...&refresh_token=...
-  // &type=recovery), but @supabase/ssr's createBrowserClient defaults to PKCE
-  // and expects ?code=. Auto detectSessionInUrl rejects the hash tokens, so we
-  // manually setSession from the hash. See /set-password for the long-term fix
-  // note (server-side /auth/confirm route, needs custom SMTP + verified domain).
   useEffect(() => {
     let cancelled = false;
 
     async function establishRecoverySession() {
-      const hash = window.location.hash.startsWith("#")
-        ? window.location.hash.slice(1)
-        : window.location.hash;
-      const params = new URLSearchParams(hash);
-      const access_token = params.get("access_token");
-      const refresh_token = params.get("refresh_token");
+      const tokenHash = searchParams.get("token_hash");
+      const type = searchParams.get("type");
 
-      if (access_token && refresh_token) {
-        const { error: setErrorResult } = await supabase.auth.setSession({
-          access_token,
-          refresh_token,
+      if (tokenHash && type === "recovery") {
+        const { error: verifyError } = await supabase.auth.verifyOtp({
+          token_hash: tokenHash,
+          type: "recovery",
         });
         if (cancelled) return;
-        if (setErrorResult) {
+        if (verifyError) {
           setError(RESET_LINK_ERROR);
           return;
         }
@@ -65,7 +70,7 @@ export default function ResetPasswordPage() {
     return () => {
       cancelled = true;
     };
-  }, [supabase]);
+  }, [searchParams, supabase]);
 
   const mismatch = confirm.length > 0 && password !== confirm;
 
