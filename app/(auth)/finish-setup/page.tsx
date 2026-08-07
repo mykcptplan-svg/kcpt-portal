@@ -9,6 +9,8 @@ export default function FinishSetupPage() {
   const router = useRouter();
   const supabase = useMemo(() => createClient(), []);
   const [fullName, setFullName] = useState("");
+  const [password, setPassword] = useState("");
+  const [confirm, setConfirm] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [sessionReady, setSessionReady] = useState(false);
@@ -35,16 +37,25 @@ export default function FinishSetupPage() {
     };
   }, [supabase]);
 
+  const mismatch = confirm.length > 0 && password !== confirm;
   const nameReady = fullName.trim().length >= 1;
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!sessionReady || !nameReady) return;
+    if (!sessionReady || mismatch || password.length < 8 || !nameReady) return;
 
     setError(null);
     setSubmitting(true);
 
     try {
+      const { error: updateError } = await supabase.auth.updateUser({
+        password,
+      });
+      if (updateError) {
+        setError(updateError.message || "Could not set password.");
+        return;
+      }
+
       const {
         data: { session },
       } = await supabase.auth.getSession();
@@ -100,7 +111,7 @@ export default function FinishSetupPage() {
         Finish setting up
       </h1>
       <p className="mt-1 text-center text-sm text-muted">
-        Enter your name to continue. Your password is already set.
+        Enter your name and choose a password to finish setting up your account.
       </p>
 
       {!sessionReady && !noSession && (
@@ -139,16 +150,58 @@ export default function FinishSetupPage() {
             />
           </div>
 
+          <div className="flex flex-col gap-1.5">
+            <label htmlFor="password" className="text-xs font-medium text-muted">
+              Password
+            </label>
+            <input
+              id="password"
+              type="password"
+              required
+              minLength={8}
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="At least 8 characters"
+              className="h-11 rounded-md border border-border bg-transparent px-3 text-sm text-foreground placeholder:text-muted focus:border-brand-orange focus:outline-none"
+            />
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            <label htmlFor="confirm" className="text-xs font-medium text-muted">
+              Confirm password
+            </label>
+            <input
+              id="confirm"
+              type="password"
+              required
+              value={confirm}
+              onChange={(e) => setConfirm(e.target.value)}
+              placeholder="Re-enter your password"
+              className="h-11 rounded-md border border-border bg-transparent px-3 text-sm text-foreground placeholder:text-muted focus:border-brand-orange focus:outline-none"
+            />
+            {mismatch && (
+              <p className="text-xs text-brand-orange-dark">
+                Passwords don&apos;t match.
+              </p>
+            )}
+          </div>
+
           {error && (
             <p className="text-xs text-brand-orange-dark">{error}</p>
           )}
 
           <button
             type="submit"
-            disabled={submitting || !nameReady}
+            disabled={
+              submitting ||
+              !sessionReady ||
+              mismatch ||
+              password.length < 8 ||
+              !nameReady
+            }
             className="mt-2 h-11 rounded-md bg-brand-orange text-sm font-medium text-black transition-opacity hover:opacity-90 disabled:opacity-60"
           >
-            {submitting ? "Setting up…" : "Continue"}
+            {submitting ? "Setting up…" : "Set password & continue"}
           </button>
         </form>
       )}
