@@ -75,6 +75,7 @@ export default function AdminPage() {
   const [onHoldOpen, setOnHoldOpen] = useState(false);
   const [quotesOpen, setQuotesOpen] = useState(false);
   const [memberQuery, setMemberQuery] = useState("");
+  const [onHoldQuery, setOnHoldQuery] = useState("");
   const [quoteQuery, setQuoteQuery] = useState("");
   const onHoldOpenInitialized = useRef(false);
 
@@ -87,6 +88,14 @@ export default function AdminPage() {
       return name.includes(q) || email.includes(q);
     });
   }, [members, memberQuery]);
+
+  const filteredPendingInvites = useMemo(() => {
+    const q = onHoldQuery.trim().toLowerCase();
+    if (!q) return pendingInvites;
+    return pendingInvites.filter((invite) =>
+      invite.email.toLowerCase().includes(q),
+    );
+  }, [pendingInvites, onHoldQuery]);
 
   const filteredQuotes = useMemo(() => {
     const q = quoteQuery.trim().toLowerCase();
@@ -770,88 +779,104 @@ export default function AdminPage() {
               <p className="px-5 pb-5 text-sm text-muted">No pending invites.</p>
             ) : (
               <>
-                <div className="flex flex-col gap-2.5 px-5 pb-5 md:hidden">
-                  {pendingInvites.map((invite) => {
-                    const busy = resendingEmail === invite.email;
-                    return (
-                      <div
-                        key={invite.email}
-                        className="rounded-[18px] border border-border bg-background px-4 py-3.5"
-                      >
-                        <p className="truncate text-[13.5px] font-bold text-foreground">
-                          {invite.email}
-                        </p>
-                        <p className="mt-1 text-xs font-medium text-muted">
-                          Invited {formatInvitedAt(invite.invited_at)}
-                        </p>
-                        <p className="mt-2 text-[11px] font-bold tracking-wide text-muted">
-                          {pendingStatusLabel(invite.status)}
-                        </p>
-                        <button
-                          type="button"
-                          onClick={() => void handleResendInvite(invite.email)}
-                          disabled={busy || resendingEmail !== null}
-                          className="mt-3 w-full cursor-pointer rounded-[10px] border-[1.5px] border-border px-3 py-2.5 text-center transition-transform hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-60"
-                        >
-                          <span className="font-heading text-[13px] uppercase tracking-wide text-muted">
-                            {busy ? "Sending…" : "Resend"}
-                          </span>
-                        </button>
-                      </div>
-                    );
-                  })}
+                <div className="flex items-center gap-2.5 px-5 pb-3">
+                  <input
+                    type="search"
+                    value={onHoldQuery}
+                    onChange={(e) => setOnHoldQuery(e.target.value)}
+                    placeholder="Search by email…"
+                    className="min-w-0 flex-1 rounded-[10px] border border-border bg-background px-[13px] py-3 text-[14px] font-semibold text-foreground outline-none focus:border-brand-orange"
+                  />
                 </div>
 
-                <div className="hidden md:block">
-                  <div className="min-w-[640px]">
-                    <div className="grid grid-cols-[2fr_1fr_1.4fr_0.8fr] items-center gap-3 px-5 pb-3">
-                      <span className="text-[11px] font-bold uppercase tracking-wide text-muted">
-                        Email
-                      </span>
-                      <span className="text-[11px] font-bold uppercase tracking-wide text-muted">
-                        Invited
-                      </span>
-                      <span className="text-[11px] font-bold uppercase tracking-wide text-muted">
-                        Status
-                      </span>
-                      <span className="text-[11px] font-bold uppercase tracking-wide text-muted">
-                        Action
-                      </span>
+                {filteredPendingInvites.length === 0 ? (
+                  <p className="px-5 pb-5 text-sm text-muted">No invites match.</p>
+                ) : (
+                  <>
+                    <div className="flex flex-col gap-2.5 px-5 pb-5 md:hidden">
+                      {filteredPendingInvites.map((invite) => {
+                        const busy = resendingEmail === invite.email;
+                        return (
+                          <div
+                            key={invite.email}
+                            className="rounded-[18px] border border-border bg-background px-4 py-3.5"
+                          >
+                            <p className="truncate text-[13.5px] font-bold text-foreground">
+                              {invite.email}
+                            </p>
+                            <p className="mt-1 text-xs font-medium text-muted">
+                              Invited {formatInvitedAt(invite.invited_at)}
+                            </p>
+                            <p className="mt-2 text-[11px] font-bold tracking-wide text-muted">
+                              {pendingStatusLabel(invite.status)}
+                            </p>
+                            <button
+                              type="button"
+                              onClick={() => void handleResendInvite(invite.email)}
+                              disabled={busy || resendingEmail !== null}
+                              className="mt-3 w-full cursor-pointer rounded-[10px] border-[1.5px] border-border px-3 py-2.5 text-center transition-transform hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-60"
+                            >
+                              <span className="font-heading text-[13px] uppercase tracking-wide text-muted">
+                                {busy ? "Sending…" : "Resend"}
+                              </span>
+                            </button>
+                          </div>
+                        );
+                      })}
                     </div>
 
-                    {pendingInvites.map((invite) => {
-                      const busy = resendingEmail === invite.email;
-                      return (
-                        <div
-                          key={invite.email}
-                          className="grid grid-cols-[2fr_1fr_1.4fr_0.8fr] items-center gap-3 border-t border-border px-5 py-3.5"
-                        >
-                          <p className="truncate text-[13.5px] font-bold text-foreground">
-                            {invite.email}
-                          </p>
-                          <p className="text-xs font-medium text-muted">
-                            {formatInvitedAt(invite.invited_at)}
-                          </p>
-                          <p className="text-[11px] font-bold tracking-wide text-muted">
-                            {pendingStatusLabel(invite.status)}
-                          </p>
-                          <button
-                            type="button"
-                            onClick={() =>
-                              void handleResendInvite(invite.email)
-                            }
-                            disabled={busy || resendingEmail !== null}
-                            className="cursor-pointer rounded-[10px] border-[1.5px] border-border px-3 py-2.5 text-center transition-transform hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-60"
-                          >
-                            <span className="font-heading text-[13px] uppercase tracking-wide text-muted">
-                              {busy ? "Sending…" : "Resend"}
-                            </span>
-                          </button>
+                    <div className="hidden md:block">
+                      <div className="min-w-[640px]">
+                        <div className="grid grid-cols-[2fr_1fr_1.4fr_0.8fr] items-center gap-3 px-5 pb-3">
+                          <span className="text-[11px] font-bold uppercase tracking-wide text-muted">
+                            Email
+                          </span>
+                          <span className="text-[11px] font-bold uppercase tracking-wide text-muted">
+                            Invited
+                          </span>
+                          <span className="text-[11px] font-bold uppercase tracking-wide text-muted">
+                            Status
+                          </span>
+                          <span className="text-[11px] font-bold uppercase tracking-wide text-muted">
+                            Action
+                          </span>
                         </div>
-                      );
-                    })}
-                  </div>
-                </div>
+
+                        {filteredPendingInvites.map((invite) => {
+                          const busy = resendingEmail === invite.email;
+                          return (
+                            <div
+                              key={invite.email}
+                              className="grid grid-cols-[2fr_1fr_1.4fr_0.8fr] items-center gap-3 border-t border-border px-5 py-3.5"
+                            >
+                              <p className="truncate text-[13.5px] font-bold text-foreground">
+                                {invite.email}
+                              </p>
+                              <p className="text-xs font-medium text-muted">
+                                {formatInvitedAt(invite.invited_at)}
+                              </p>
+                              <p className="text-[11px] font-bold tracking-wide text-muted">
+                                {pendingStatusLabel(invite.status)}
+                              </p>
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  void handleResendInvite(invite.email)
+                                }
+                                disabled={busy || resendingEmail !== null}
+                                className="cursor-pointer rounded-[10px] border-[1.5px] border-border px-3 py-2.5 text-center transition-transform hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-60"
+                              >
+                                <span className="font-heading text-[13px] uppercase tracking-wide text-muted">
+                                  {busy ? "Sending…" : "Resend"}
+                                </span>
+                              </button>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </>
+                )}
               </>
             )}
           </>
