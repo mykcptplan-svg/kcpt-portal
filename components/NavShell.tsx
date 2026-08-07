@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import {
   BellIcon,
   ChartIcon,
@@ -81,11 +81,19 @@ const adminPanelItem: NavItem = {
 
 export default function NavShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
-  const { profile, loading } = useProfile();
+  const router = useRouter();
+  const { profile, loading, needsSetup } = useProfile();
   const [moreOpen, setMoreOpen] = useState(false);
   const [keyboardOpen, setKeyboardOpen] = useState(false);
   const [showComingSoon, setShowComingSoon] = useState(false);
   const bellWrapRef = useRef<HTMLDivElement>(null);
+
+  // Session without profiles row → finish account setup (outside this shell).
+  useEffect(() => {
+    if (needsSetup && pathname !== "/finish-setup") {
+      router.replace("/finish-setup");
+    }
+  }, [needsSetup, pathname, router]);
 
   useEffect(() => {
     const vv = window.visualViewport;
@@ -165,6 +173,14 @@ export default function NavShell({ children }: { children: ReactNode }) {
     pathname.startsWith("/evening-meals") ||
     pathname.startsWith("/coach-review") ||
     pathname.startsWith("/admin");
+
+  if (needsSetup) {
+    return (
+      <div className="flex min-h-full flex-1 items-center justify-center bg-background px-6">
+        <p className="text-sm text-muted">Finishing account setup…</p>
+      </div>
+    );
+  }
 
   return (
     <div className="flex min-h-full flex-1 bg-background">

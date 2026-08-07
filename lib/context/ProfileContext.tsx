@@ -15,6 +15,8 @@ type ProfileContextValue = {
   profile: CallerProfile | null;
   loading: boolean;
   error: string | null;
+  /** Session exists but no profiles row (get-profile returns empty status). */
+  needsSetup: boolean;
 };
 
 const ProfileContext = createContext<ProfileContextValue | null>(null);
@@ -24,6 +26,7 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
   const [profile, setProfile] = useState<CallerProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [needsSetup, setNeedsSetup] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -37,6 +40,7 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
         if (!cancelled) {
           setProfile(null);
           setError(null);
+          setNeedsSetup(false);
           setLoading(false);
         }
         return;
@@ -47,9 +51,12 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
         if (cancelled) return;
         setProfile(next);
         setError(null);
+        // Missing profiles row: get-profile still returns 200 with empty status.
+        setNeedsSetup(next.status.trim() === "");
       } catch (err) {
         if (cancelled) return;
         setProfile(null);
+        setNeedsSetup(false);
         setError(
           err instanceof Error ? err.message : "Unable to load profile",
         );
@@ -65,8 +72,14 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
   }, [supabase]);
 
   const value = useMemo(
-    () => ({ profile, loading, error }),
-    [profile, loading, error],
+    () => ({
+      profile,
+      loading,
+      error,
+      // Keep false while loading so NavShell does not flash a redirect.
+      needsSetup: loading ? false : needsSetup,
+    }),
+    [profile, loading, error, needsSetup],
   );
 
   return (
