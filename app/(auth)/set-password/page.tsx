@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 
@@ -161,7 +162,15 @@ export default function SetPasswordPage() {
       )}
 
       {!sessionReady && error && (
-        <p className="mt-8 text-xs text-brand-orange-dark">{error}</p>
+        <div className="mt-8 flex flex-col items-center gap-3">
+          <p className="text-center text-xs text-brand-orange-dark">{error}</p>
+          <Link
+            href="/login"
+            className="text-sm font-medium text-brand-orange hover:opacity-90"
+          >
+            Go to login
+          </Link>
+        </div>
       )}
 
       {sessionReady && (
