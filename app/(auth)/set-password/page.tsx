@@ -41,12 +41,23 @@ export default function SetPasswordPage() {
           refresh_token,
         });
         if (cancelled) return;
-        if (setErrorResult) {
-          setError(INVITE_ERROR);
+        if (!setErrorResult) {
+          window.history.replaceState(null, "", window.location.pathname);
+          setSessionReady(true);
           return;
         }
-        window.history.replaceState(null, "", window.location.pathname);
-        setSessionReady(true);
+        // Stale/rotated tokens from an old bookmarked URL — check for an
+        // already-valid session before giving up.
+        const {
+          data: { session: existingSession },
+        } = await supabase.auth.getSession();
+        if (cancelled) return;
+        if (existingSession) {
+          window.history.replaceState(null, "", window.location.pathname);
+          router.replace("/");
+          return;
+        }
+        setError(INVITE_ERROR);
         return;
       }
 
@@ -66,7 +77,7 @@ export default function SetPasswordPage() {
     return () => {
       cancelled = true;
     };
-  }, [supabase]);
+  }, [router, supabase]);
 
   const mismatch = confirm.length > 0 && password !== confirm;
   const nameReady = fullName.trim().length >= 1;
