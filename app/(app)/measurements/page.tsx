@@ -61,6 +61,30 @@ function formatChartLabel(weekStart: string): string {
   return monday.toLocaleDateString("en-US", { month: "short", day: "numeric" });
 }
 
+function formatEntryDate(weekStart: string): string {
+  const [year, month, day] = weekStart.split("-").map(Number);
+  const monday = new Date(year, month - 1, day);
+  return monday.toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+}
+
+function formatMetricDisplay(metric: MetricKey, value: number): string {
+  if (metric === "weight") {
+    const { stone, lbs } = stoneLbsFromTotal(value);
+    return `${stone}st ${lbs}lb`;
+  }
+  return `${value} in`;
+}
+
+function deltaColor(delta: number): string {
+  if (delta === 0) return "var(--muted)";
+  if (delta < 0) return "#6a9a63";
+  return "var(--brand-orange-dark)";
+}
+
 function totalLbsFromStoneLbs(stone: number, lbs: number): number {
   return stone * 14 + lbs;
 }
@@ -140,6 +164,7 @@ export default function MeasurementsPage() {
   const [isEditing, setIsEditing] = useState(false);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [showAllEntries, setShowAllEntries] = useState(false);
   const startedEmptyRef = useRef(false);
 
   async function getAccessToken(): Promise<string | null> {
@@ -293,6 +318,7 @@ export default function MeasurementsPage() {
       ),
       current: 0,
       delta: 0,
+      lastEntryDelta: null as number | null,
     };
 
     const chartEntries = entries.filter((e) => e[activeMetric] != null);
@@ -329,9 +355,27 @@ export default function MeasurementsPage() {
     const current = values.at(-1) ?? 0;
     const first = values[0] ?? 0;
     const delta = current - first;
+    const previous = values.length >= 2 ? values.at(-2)! : null;
+    const lastEntryDelta = previous != null ? current - previous : null;
 
-    return { points, linePath, areaPath, gridLines, current, delta };
+    return {
+      points,
+      linePath,
+      areaPath,
+      gridLines,
+      current,
+      delta,
+      lastEntryDelta,
+    };
   }, [entries, activeMetric]);
+
+  const historyListEntries = useMemo(
+    () =>
+      entries
+        .filter((e) => e[activeMetric] != null)
+        .sort((a, b) => b.week_start.localeCompare(a.week_start)),
+    [entries, activeMetric],
+  );
 
   const metricLabel = METRICS.find((m) => m.key === activeMetric)!.label;
 
@@ -551,25 +595,28 @@ export default function MeasurementsPage() {
           </p>
         ) : (
           <>
-            <div className="mb-3.5 flex items-baseline gap-3">
+            <div className="mb-3.5 flex flex-col gap-1">
               <span className="font-heading text-[30px] text-foreground">
                 {chart.current} · {metricLabel}
               </span>
               <span
                 className="text-[13px] font-bold"
-                style={{
-                  color:
-                    chart.delta === 0
-                      ? "var(--muted)"
-                      : chart.delta < 0
-                        ? "#6a9a63"
-                        : "var(--brand-orange-dark)",
-                }}
+                style={{ color: deltaColor(chart.delta) }}
               >
                 {chart.delta === 0
-                  ? "No change"
-                  : `${chart.delta > 0 ? "+" : ""}${chart.delta.toFixed(1)} since start`}
+                  ? "No change since first log"
+                  : `${chart.delta > 0 ? "+" : ""}${chart.delta.toFixed(1)} since first log`}
               </span>
+              {chart.lastEntryDelta !== null && (
+                <span
+                  className="text-[13px] font-bold"
+                  style={{ color: deltaColor(chart.lastEntryDelta) }}
+                >
+                  {chart.lastEntryDelta === 0
+                    ? "No change vs last entry"
+                    : `${chart.lastEntryDelta > 0 ? "+" : ""}${chart.lastEntryDelta.toFixed(1)} vs last entry`}
+                </span>
+              )}
             </div>
 
             <svg
@@ -624,6 +671,36 @@ export default function MeasurementsPage() {
                   {pt.dateLabel}
                 </span>
               ))}
+            </div>
+
+            <div className="mt-5 border-t border-border pt-4">
+              <button
+                type="button"
+                onClick={() => setShowAllEntries((open) => !open)}
+                className="cursor-pointer text-[12px] font-bold text-muted transition-colors hover:text-foreground"
+              >
+                {showAllEntries ? "Hide entries" : "View all entries"}
+              </button>
+              {showAllEntries && (
+                <div className="mt-3 flex flex-col gap-2">
+                  {historyListEntries.map((entry) => (
+                    <div
+                      key={entry.week_start}
+                      className="flex items-center justify-between rounded-[14px] border border-border bg-background px-[13px] py-3"
+                    >
+                      <span className="text-[13px] font-semibold text-muted">
+                        {formatEntryDate(entry.week_start)}
+                      </span>
+                      <span className="text-[14px] font-bold text-foreground">
+                        {formatMetricDisplay(
+                          activeMetric,
+                          entry[activeMetric] as number,
+                        )}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </>
         )}
