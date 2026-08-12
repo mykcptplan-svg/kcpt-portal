@@ -97,6 +97,7 @@ export default function LoginPage() {
           <div className="mt-8 flex w-full flex-col gap-4">
             <p className="text-center text-sm text-muted">
               If an account exists for that email, we sent a reset link.
+              Don&apos;t see it? Check your Spam or Junk folder.
             </p>
             <button
               type="button"
