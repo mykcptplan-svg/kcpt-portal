@@ -25,6 +25,27 @@ export default function FinishSetupPage() {
       } = await supabase.auth.getSession();
       if (cancelled) return;
       if (session) {
+        const {
+          data: { user },
+        } = await supabase.auth.getUser();
+        if (cancelled) return;
+        if (!user) {
+          setNoSession(true);
+          return;
+        }
+
+        const { data: profile } = await supabase
+          .from("profiles")
+          .select("id")
+          .eq("id", user.id)
+          .maybeSingle();
+        if (cancelled) return;
+
+        if (profile) {
+          router.replace("/");
+          return;
+        }
+
         setSessionReady(true);
         return;
       }
@@ -35,7 +56,7 @@ export default function FinishSetupPage() {
     return () => {
       cancelled = true;
     };
-  }, [supabase]);
+  }, [router, supabase]);
 
   const mismatch = confirm.length > 0 && password !== confirm;
   const nameReady = fullName.trim().length >= 1;

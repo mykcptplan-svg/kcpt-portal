@@ -28,6 +28,33 @@ export default function SetPasswordPage() {
   useEffect(() => {
     let cancelled = false;
 
+    async function finishSessionSetup(options: { clearHash: boolean }) {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (cancelled || !user) return;
+
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("id")
+        .eq("id", user.id)
+        .maybeSingle();
+      if (cancelled) return;
+
+      if (profile) {
+        if (options.clearHash) {
+          window.history.replaceState(null, "", window.location.pathname);
+        }
+        router.replace("/");
+        return;
+      }
+
+      if (options.clearHash) {
+        window.history.replaceState(null, "", window.location.pathname);
+      }
+      setSessionReady(true);
+    }
+
     async function establishInviteSession() {
       const hash = window.location.hash.startsWith("#")
         ? window.location.hash.slice(1)
@@ -43,8 +70,7 @@ export default function SetPasswordPage() {
         });
         if (cancelled) return;
         if (!setErrorResult) {
-          window.history.replaceState(null, "", window.location.pathname);
-          setSessionReady(true);
+          await finishSessionSetup({ clearHash: true });
           return;
         }
         // Stale/rotated tokens from an old bookmarked URL — check for an
@@ -67,7 +93,7 @@ export default function SetPasswordPage() {
       } = await supabase.auth.getSession();
       if (cancelled) return;
       if (session) {
-        setSessionReady(true);
+        await finishSessionSetup({ clearHash: false });
         return;
       }
 
