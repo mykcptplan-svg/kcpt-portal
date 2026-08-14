@@ -577,11 +577,6 @@ export default function MeasurementsPage() {
           />
         </div>
 
-        <p className="mb-4 text-[12px] font-medium leading-snug text-muted">
-          Measurements every 4 weeks are enough — you can still log here any
-          day if you want to.
-        </p>
-
         <div className="grid grid-cols-2 gap-3">
           {(
             [
