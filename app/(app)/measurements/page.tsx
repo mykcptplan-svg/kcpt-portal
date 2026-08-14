@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import AutosaveStatus from "@/components/AutosaveStatus";
 import HeartLoader from "@/components/HeartLoader";
 import TipsCard from "@/components/measurements/TipsCard";
@@ -12,16 +12,20 @@ import {
 } from "@/lib/api/measurements";
 import { useDebouncedSave } from "@/lib/hooks/useDebouncedSave";
 import { createClient } from "@/lib/supabase/client";
-import { getWeekStart } from "@/lib/week";
+import { formatWeekStart, getWeekStart } from "@/lib/week";
 import type { WeightMeasurement } from "@/types";
 
 type MetricKey = "weight" | "waist" | "hips";
 
 type Entry = {
+  measured_on: string;
   week_start: string;
   weight: number | null;
   waist: number | null;
   hips: number | null;
+  arm: number | null;
+  thigh: number | null;
+  calve: number | null;
 };
 
 type FormState = {
@@ -115,7 +119,7 @@ function formFromEntry(entry: Entry | null | undefined): FormState {
   };
 }
 
-function extraFormFromEntry(row: WeightMeasurement | null): ExtraFormState {
+function extraFormFromEntry(row: Entry | WeightMeasurement | null): ExtraFormState {
   if (!row) return emptyExtraForm();
   return {
     arm: row.arm != null ? String(row.arm) : "",
@@ -124,18 +128,21 @@ function extraFormFromEntry(row: WeightMeasurement | null): ExtraFormState {
   };
 }
 
-function entryFromRow(row: {
-  week_start: string;
-  weight: number | null;
-  waist: number | null;
-  hips: number | null;
-}): Entry {
+function entryFromRow(row: WeightMeasurement): Entry {
   return {
+    measured_on: row.measured_on,
     week_start: row.week_start,
     weight: row.weight,
     waist: row.waist,
     hips: row.hips,
+    arm: row.arm,
+    thigh: row.thigh,
+    calve: row.calve,
   };
+}
+
+function todayLocal(): string {
+  return formatWeekStart(new Date());
 }
 
 function parsePositive(raw: string): number | null {
@@ -158,6 +165,7 @@ export default function MeasurementsPage() {
 
   const [entries, setEntries] = useState<Entry[]>([]);
   const [activeMetric, setActiveMetric] = useState<MetricKey>("weight");
+  const [measuredOn, setMeasuredOn] = useState(todayLocal);
   const [form, setForm] = useState<FormState>(emptyForm);
   const [extraForm, setExtraForm] = useState<ExtraFormState>(emptyExtraForm);
   const [hasSavedEntry, setHasSavedEntry] = useState(false);
@@ -165,7 +173,7 @@ export default function MeasurementsPage() {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [showAllEntries, setShowAllEntries] = useState(false);
-  const startedEmptyRef = useRef(false);
+  const [skipSave, setSkipSave] = useState(true);
 
   async function getAccessToken(): Promise<string | null> {
     const {
@@ -188,29 +196,37 @@ export default function MeasurementsPage() {
         }
         const token = session.access_token;
 
-        const [currentRow, weeks] = await Promise.all([
-          getWeightMeasurement(weekStart, token),
-          getWeeksList(token),
-        ]);
+        const weeks = await getWeeksList(token);
         if (cancelled) return;
 
-        startedEmptyRef.current = !currentRow;
-
         const measuredWeeks = weeks.filter((w) => w.has_measurements);
+        const weekStartsToLoad = [
+          ...new Set([
+            weekStart,
+            ...measuredWeeks.map((w) => w.week_start),
+          ]),
+        ];
         const historyRows = await Promise.all(
-          measuredWeeks.map((w) => getWeightMeasurement(w.week_start, token)),
+          weekStartsToLoad.map((ws) => getWeightMeasurement(ws, token)),
         );
         if (cancelled) return;
 
         const historyEntries = historyRows
-          .filter((row): row is NonNullable<typeof row> => row !== null)
+          .flat()
           .map(entryFromRow)
-          .sort((a, b) => a.week_start.localeCompare(b.week_start));
+          .sort((a, b) => a.measured_on.localeCompare(b.measured_on));
+
+        const today = todayLocal();
+        const todayEntry =
+          historyEntries.find((e) => e.measured_on === today) ?? null;
 
         setEntries(historyEntries);
-        setForm(formFromEntry(currentRow ? entryFromRow(currentRow) : null));
-        setExtraForm(extraFormFromEntry(currentRow));
-        if (currentRow) setHasSavedEntry(true);
+        setMeasuredOn(today);
+        setForm(formFromEntry(todayEntry));
+        setExtraForm(extraFormFromEntry(todayEntry));
+        setHasSavedEntry(todayEntry != null);
+        setIsEditing(todayEntry == null);
+        setSkipSave(true);
       } catch (err) {
         if (!cancelled) {
           setLoadError(
@@ -236,14 +252,42 @@ export default function MeasurementsPage() {
     setExtraForm((prev) => ({ ...prev, [key]: value }));
   }
 
+  function applyEntryToForm(entry: Entry | null) {
+    setSkipSave(true);
+    setForm(formFromEntry(entry));
+    setExtraForm(extraFormFromEntry(entry));
+    setHasSavedEntry(entry != null);
+    setIsEditing(entry == null);
+  }
+
+  function selectMeasuredOn(date: string) {
+    setMeasuredOn(date);
+    if (!date) {
+      applyEntryToForm(null);
+      return;
+    }
+    const existing = entries.find((e) => e.measured_on === date) ?? null;
+    applyEntryToForm(existing);
+  }
+
+  function addAnotherEntry() {
+    const today = todayLocal();
+    const todayTaken = entries.some((e) => e.measured_on === today);
+    selectMeasuredOn(todayTaken ? "" : today);
+  }
+
   const saveValue = useMemo(
-    () => ({ ...form, ...extraForm }),
-    [form, extraForm],
+    () => ({ ...form, ...extraForm, measuredOn }),
+    [form, extraForm, measuredOn],
   );
+
+  const showForm = !hasSavedEntry || isEditing;
 
   const { status, error: saveError } = useDebouncedSave(
     saveValue,
     async (value) => {
+      if (!value.measuredOn) return false;
+
       const accessToken = await getAccessToken();
       if (!accessToken) throw new Error("Not logged in.");
 
@@ -273,7 +317,7 @@ export default function MeasurementsPage() {
 
       await saveWeightMeasurement(
         {
-          week_start: weekStart,
+          measured_on: value.measuredOn,
           weight: weight != null && weight > 0 ? weight : null,
           waist,
           hips,
@@ -285,16 +329,25 @@ export default function MeasurementsPage() {
       );
 
       const saved: Entry = {
-        week_start: weekStart,
+        measured_on: value.measuredOn,
+        week_start: getWeekStart(
+          (() => {
+            const [y, m, d] = value.measuredOn.split("-").map(Number);
+            return new Date(y, m - 1, d);
+          })(),
+        ),
         weight: weight != null && weight > 0 ? weight : null,
         waist,
         hips,
+        arm,
+        thigh,
+        calve,
       };
       setEntries((prev) => {
-        const idx = prev.findIndex((e) => e.week_start === weekStart);
+        const idx = prev.findIndex((e) => e.measured_on === value.measuredOn);
         if (idx === -1) {
           return [...prev, saved].sort((a, b) =>
-            a.week_start.localeCompare(b.week_start),
+            a.measured_on.localeCompare(b.measured_on),
           );
         }
         const next = prev.slice();
@@ -303,10 +356,14 @@ export default function MeasurementsPage() {
       });
       setHasSavedEntry(true);
     },
-    { skip: loading },
+    { skip: loading || skipSave || !showForm },
   );
 
-  const showForm = !hasSavedEntry || isEditing || startedEmptyRef.current;
+  useEffect(() => {
+    if (skipSave && !loading) {
+      setSkipSave(false);
+    }
+  }, [skipSave, loading, measuredOn, form, extraForm]);
 
   const chart = useMemo(() => {
     const empty = {
@@ -338,7 +395,7 @@ export default function MeasurementsPage() {
         PAD_TOP +
         (1 - ((e[activeMetric] as number) - min) / range) *
           (CHART_H - PAD_TOP - PAD_BOTTOM);
-      return { x, y, dateLabel: formatChartLabel(e.week_start) };
+      return { x, y, dateLabel: formatChartLabel(e.measured_on) };
     });
 
     const linePath = points
@@ -373,8 +430,16 @@ export default function MeasurementsPage() {
     () =>
       entries
         .filter((e) => e[activeMetric] != null)
-        .sort((a, b) => b.week_start.localeCompare(a.week_start)),
+        .sort((a, b) => b.measured_on.localeCompare(a.measured_on)),
     [entries, activeMetric],
+  );
+
+  const thisWeekEntries = useMemo(
+    () =>
+      entries
+        .filter((e) => e.week_start === weekStart)
+        .sort((a, b) => b.measured_on.localeCompare(a.measured_on)),
+    [entries, weekStart],
   );
 
   const metricLabel = METRICS.find((m) => m.key === activeMetric)!.label;
@@ -432,16 +497,16 @@ export default function MeasurementsPage() {
         ]}
       />
 
-      {/* This week's entry — log or read-only */}
+      {/* This week's entries — log or edit a dated entry */}
       <section className="rounded-[20px] border border-border bg-card p-5 shadow-[0_12px_26px_-18px_rgba(17,17,17,0.16)]">
         <div className="mb-4 flex items-center gap-3">
           <span className="flex h-[38px] w-[38px] shrink-0 items-center justify-center rounded-full bg-brand-gradient text-white">
             <RulerIcon className="h-4 w-4" />
           </span>
           <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-3">
+            <div className="flex flex-wrap items-center gap-3">
               <h2 className="font-heading text-base uppercase tracking-wide text-foreground">
-                {hasSavedEntry ? "This Week's Entry" : "Update Your Progress"}
+                {hasSavedEntry ? "This week's entries" : "Log an entry"}
               </h2>
               {hasSavedEntry && !isEditing && (
                 <button
@@ -452,25 +517,69 @@ export default function MeasurementsPage() {
                   Edit
                 </button>
               )}
+              <button
+                type="button"
+                onClick={addAnotherEntry}
+                className="cursor-pointer rounded-full border border-border bg-card px-3 py-1 text-[12px] font-bold text-muted transition-colors hover:text-foreground"
+              >
+                Add another
+              </button>
             </div>
-            {!hasSavedEntry && (
-              <p className="mt-1 text-[12px] text-muted">
-                You can log your weight weekly if you wish. Body measurements
-                are best taken every 4 weeks for a more meaningful comparison.
-              </p>
-            )}
-            {hasSavedEntry && !isEditing && (
-              <p className="mt-1 text-[12px] text-muted">
-                Only edit if you made a mistake — this won&apos;t create a new
-                entry.
-              </p>
-            )}
+            <p className="mt-1 text-[12px] text-muted">
+              You can log more than once a week — pick the date you weighed in.
+              Body measurements are best taken every 4 weeks.
+            </p>
           </div>
+        </div>
+
+        {thisWeekEntries.length > 0 && (
+          <div className="mb-4 flex flex-col gap-2">
+            {thisWeekEntries.map((entry) => {
+              const selected = entry.measured_on === measuredOn;
+              return (
+                <button
+                  key={entry.measured_on}
+                  type="button"
+                  onClick={() => selectMeasuredOn(entry.measured_on)}
+                  className={`flex w-full cursor-pointer items-center justify-between rounded-[14px] border px-[13px] py-3 text-left ${
+                    selected
+                      ? "border-brand-orange bg-background"
+                      : "border-border bg-background"
+                  }`}
+                >
+                  <span className="text-[13px] font-semibold text-muted">
+                    {formatEntryDate(entry.measured_on)}
+                  </span>
+                  <span className="text-[14px] font-bold text-foreground">
+                    {entry.weight != null
+                      ? formatMetricDisplay("weight", entry.weight)
+                      : entry.waist != null
+                        ? formatMetricDisplay("waist", entry.waist)
+                        : entry.hips != null
+                          ? formatMetricDisplay("hips", entry.hips)
+                          : "Logged"}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        )}
+
+        <div className="mb-4">
+          <p className="mb-2 text-[11px] font-bold uppercase tracking-wide text-muted">
+            Date
+          </p>
+          <input
+            type="date"
+            value={measuredOn}
+            onChange={(e) => selectMeasuredOn(e.target.value)}
+            className="w-full rounded-[10px] border border-border bg-background px-[13px] py-3 text-[14px] font-semibold text-foreground outline-none focus:border-brand-orange"
+          />
         </div>
 
         <p className="mb-4 text-[12px] font-medium leading-snug text-muted">
           Measurements every 4 weeks are enough — you can still log here any
-          week if you want to.
+          day if you want to.
         </p>
 
         <div className="grid grid-cols-2 gap-3">
@@ -685,11 +794,11 @@ export default function MeasurementsPage() {
                 <div className="mt-3 flex flex-col gap-2">
                   {historyListEntries.map((entry) => (
                     <div
-                      key={entry.week_start}
+                      key={entry.measured_on}
                       className="flex items-center justify-between rounded-[14px] border border-border bg-background px-[13px] py-3"
                     >
                       <span className="text-[13px] font-semibold text-muted">
-                        {formatEntryDate(entry.week_start)}
+                        {formatEntryDate(entry.measured_on)}
                       </span>
                       <span className="text-[14px] font-bold text-foreground">
                         {formatMetricDisplay(

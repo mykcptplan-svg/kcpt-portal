@@ -240,13 +240,17 @@ function TrackerDetail({ tracker }: { tracker: WeeklyTrackerEntry | null }) {
   );
 }
 
-function MeasurementsDetail({
-  measurement,
-}: {
-  measurement: WeightMeasurement | null;
-}) {
-  if (!measurement) return <EmptyState />;
+function formatMeasurementDate(iso: string): string {
+  const [year, month, day] = iso.split("-").map(Number);
+  const date = new Date(year, month - 1, day);
+  return date.toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+}
 
+function MeasurementChips({ measurement }: { measurement: WeightMeasurement }) {
   const weightParts =
     measurement.weight != null
       ? stoneLbsFromTotal(measurement.weight)
@@ -280,13 +284,38 @@ function MeasurementsDetail({
   );
 }
 
+function MeasurementsDetail({
+  measurement,
+}: {
+  measurement: WeightMeasurement[];
+}) {
+  if (measurement.length === 0) return <EmptyState />;
+
+  const newestFirst = [...measurement].sort((a, b) =>
+    b.measured_on.localeCompare(a.measured_on),
+  );
+
+  return (
+    <div className="flex flex-col gap-4">
+      {newestFirst.map((row) => (
+        <div key={row.measured_on}>
+          <p className="mb-2 text-[12px] font-bold text-muted">
+            {formatMeasurementDate(row.measured_on)}
+          </p>
+          <MeasurementChips measurement={row} />
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export type HistorySectionKey = "food" | "tracker" | "measurements";
 
 type SectionDetailProps = {
   sectionKey: HistorySectionKey;
   plan: WeeklyBasePlan | null;
   tracker: WeeklyTrackerEntry | null;
-  measurement: WeightMeasurement | null;
+  measurement: WeightMeasurement[];
 };
 
 export default function SectionDetail({

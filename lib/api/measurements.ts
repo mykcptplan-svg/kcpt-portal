@@ -13,10 +13,10 @@
  *   const supabase = createClient();
  *   const { data: { session } } = await supabase.auth.getSession();
  *   if (!session) throw new Error("Not logged in");
- *   const row = await getWeightMeasurement("2026-07-20", session.access_token);
+ *   const rows = await getWeightMeasurement("2026-07-20", session.access_token);
  *   await saveWeightMeasurement(
  *     {
- *       week_start: "2026-07-20",
+ *       measured_on: "2026-07-22",
  *       weight: 70,
  *       waist: 80,
  *       hips: 95,
@@ -61,7 +61,7 @@ export async function getWeightMeasurement(
   weekStart: string,
   accessToken: string,
   userId?: string,
-): Promise<WeightMeasurement | null> {
+): Promise<WeightMeasurement[]> {
   const params = new URLSearchParams({ week_start: weekStart });
   if (userId !== undefined) {
     params.set("user_id", userId);
@@ -76,12 +76,14 @@ export async function getWeightMeasurement(
     throw await errorFromResponse(res, "Unable to load measurements");
   }
 
-  const body = (await res.json()) as { data: WeightMeasurement | null };
-  return body.data;
+  const body = (await res.json()) as { data: WeightMeasurement[] | null };
+  return Array.isArray(body.data) ? body.data : [];
 }
 
 export async function saveWeightMeasurement(
-  measurement: Omit<WeightMeasurement, "user_id">,
+  measurement: Omit<WeightMeasurement, "user_id" | "week_start"> & {
+    week_start?: string;
+  },
   accessToken: string,
 ): Promise<void> {
   const res = await fetch(ENDPOINT, {

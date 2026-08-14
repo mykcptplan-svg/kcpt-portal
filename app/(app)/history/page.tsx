@@ -33,8 +33,15 @@ import type {
 type WeekDetailCache = {
   plan: WeeklyBasePlan | null;
   tracker: WeeklyTrackerEntry | null;
-  measurement: WeightMeasurement | null;
+  measurement: WeightMeasurement[];
 };
+
+function latestMeasurement(
+  rows: WeightMeasurement[] | null | undefined,
+): WeightMeasurement | null {
+  if (!rows || rows.length === 0) return null;
+  return rows[rows.length - 1] ?? null;
+}
 
 function computeStatus(w: WeekSummary): {
   key: "complete" | "partial" | "none";
@@ -61,20 +68,23 @@ function measurementSummary(
   week: WeekSummary,
   detail: WeekDetailCache | undefined,
   weeks: WeekSummary[],
-  measurementByWeek: Record<string, WeightMeasurement | null>,
+  measurementByWeek: Record<string, WeightMeasurement[]>,
 ): string {
-  if (!week.has_measurements || !detail?.measurement) {
+  const rows = detail?.measurement ?? [];
+  if (!week.has_measurements || rows.length === 0) {
     return "No entry this week";
   }
+  const current = latestMeasurement(rows);
   const priorWeek = findClosestEarlierMeasuredWeek(weeks, week.week_start);
   const prior = priorWeek
-    ? measurementByWeek[priorWeek.week_start]
-    : undefined;
-  if (prior == null) return "Logged this week";
-  if (detail.measurement.weight == null || prior.weight == null) {
-    return "Logged this week";
+    ? latestMeasurement(measurementByWeek[priorWeek.week_start])
+    : null;
+  if (prior == null || current?.weight == null || prior.weight == null) {
+    return rows.length > 1
+      ? `Logged this week (${rows.length} entries)`
+      : "Logged this week";
   }
-  const delta = detail.measurement.weight - prior.weight;
+  const delta = current.weight - prior.weight;
   const formatted = `${delta > 0 ? "+" : ""}${delta.toFixed(1)}`;
   return `Logged · ${formatted} since last week`;
 }
@@ -92,7 +102,7 @@ export default function HistoryPage() {
     Record<string, WeekDetailCache>
   >({});
   const [measurementByWeek, setMeasurementByWeek] = useState<
-    Record<string, WeightMeasurement | null>
+    Record<string, WeightMeasurement[]>
   >({});
   const measurementByWeekRef = useRef(measurementByWeek);
   measurementByWeekRef.current = measurementByWeek;
@@ -173,13 +183,13 @@ export default function HistoryPage() {
         const [plan, tracker, measurement, priorMeasurement] = await Promise.all([
           getWeeklyBasePlan(weekStart, token).catch(() => null),
           getWeeklyTracker(weekStart, token).catch(() => null),
-          getWeightMeasurement(weekStart, token).catch(() => null),
+          getWeightMeasurement(weekStart, token).catch(() => []),
           priorWeek && !priorAlreadyCached
-            ? getWeightMeasurement(priorWeek.week_start, token).catch(() => null)
+            ? getWeightMeasurement(priorWeek.week_start, token).catch(() => [])
             : Promise.resolve(
                 priorKey != null
-                  ? (measurementByWeekRef.current[priorKey] ?? null)
-                  : null,
+                  ? (measurementByWeekRef.current[priorKey] ?? [])
+                  : [],
               ),
         ]);
 
@@ -474,7 +484,7 @@ export default function HistoryPage() {
                                   sectionKey={section.key}
                                   plan={detail.plan}
                                   tracker={detail.tracker}
-                                  measurement={detail.measurement}
+                                  measurement={detail.measurement ?? []}
                                 />
                               </div>
                             )}

@@ -47,6 +47,7 @@ export type WeeklyTrackerEntry = {
 export type WeightMeasurement = {
   user_id: string;
   week_start: string;
+  measured_on: string;
   weight: number | null;
   waist: number | null;
   hips: number | null;

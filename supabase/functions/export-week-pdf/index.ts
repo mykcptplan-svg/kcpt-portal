@@ -252,7 +252,7 @@ Deno.serve(async (req: Request) => {
       .select("*")
       .eq("user_id", user.id)
       .eq("week_start", weekStart)
-      .maybeSingle(),
+      .order("measured_on", { ascending: true }),
   ]);
 
   if (planRes.error || trackerRes.error || measurementRes.error) {
@@ -266,7 +266,9 @@ Deno.serve(async (req: Request) => {
 
   const plan = planRes.data as Record<string, unknown> | null;
   const trackerRow = trackerRes.data as Record<string, unknown> | null;
-  const measurement = measurementRes.data as Record<string, unknown> | null;
+  const measurements = (Array.isArray(measurementRes.data)
+    ? measurementRes.data
+    : []) as Record<string, unknown>[];
 
   const nonNegotiables = coerceNonNegotiables(trackerRow?.habits);
   const wins = coerceString3(trackerRow?.wins);
@@ -962,22 +964,51 @@ Deno.serve(async (req: Request) => {
       { key: "thigh", label: "Thigh", unit: "in" },
       { key: "calve", label: "Calve", unit: "in" },
     ];
-    const measureRows = measureFields.map((f) => {
-      const v = measurement?.[f.key];
-      const has = typeof v === "number";
-      return {
-        label: f.label,
-        value: has ? v + " " + f.unit : "-",
-        muted: !has,
-      };
-    });
+    const measureRows: {
+      label: string;
+      value: string;
+      muted: boolean;
+      header: boolean;
+    }[] = [];
+    if (measurements.length === 0) {
+      for (const f of measureFields) {
+        measureRows.push({
+          label: f.label,
+          value: "-",
+          muted: true,
+          header: false,
+        });
+      }
+    } else {
+      for (const m of measurements) {
+        measureRows.push({
+          label: String(m.measured_on ?? ""),
+          value: "",
+          muted: false,
+          header: true,
+        });
+        for (const f of measureFields) {
+          const v = m[f.key];
+          const has = typeof v === "number";
+          measureRows.push({
+            label: f.label,
+            value: has ? v + " " + f.unit : "-",
+            muted: !has,
+            header: false,
+          });
+        }
+      }
+    }
 
     y -= SECTION_GAP_BEFORE;
     const leftBodyH = leftLines.reduce((h, l) => {
       if (l.kind === "sub") return h + 18;
       return h + 16;
     }, 0);
-    const rightBodyH = measureRows.length * 20;
+    const rightBodyH = measureRows.reduce(
+      (h, row) => h + (row.header ? 18 : 20),
+      0,
+    );
     ensureSpace(SECTION_GAP_AFTER + Math.max(leftBodyH, rightBodyH) + 12);
     const sectionTop = y;
 
@@ -1041,6 +1072,19 @@ Deno.serve(async (req: Request) => {
     let rightY = contentTop;
     for (let i = 0; i < measureRows.length; i++) {
       const row = measureRows[i];
+      if (row.header) {
+        drawTrackedText(
+          row.label,
+          rightContentX,
+          rightY,
+          8,
+          fontBold,
+          DARK,
+          0.6,
+        );
+        rightY -= 18;
+        continue;
+      }
       page.drawText(row.label, {
         x: rightContentX,
         y: rightY,
@@ -1059,7 +1103,7 @@ Deno.serve(async (req: Request) => {
         color: row.muted ? MUTED : DARK,
       });
       rightY -= 4;
-      if (i < measureRows.length - 1) {
+      if (i < measureRows.length - 1 && !measureRows[i + 1].header) {
         page.drawLine({
           start: { x: rightContentX, y: rightY },
           end: { x: rightContentX + colContentW, y: rightY },

@@ -1,12 +1,15 @@
 /**
  * weight-measurements Edge Function
  *
- * GET/PUT for a member's weight_measurements row.
+ * GET/PUT for a member's weight_measurements rows.
  *
  * Uses the caller's JWT only (no service_role). RLS policies still apply.
  * PUT always writes user_id from the authenticated token. GET may pass an
  * optional user_id query param for coach/admin Coach Review reads; members
  * requesting another user's id receive 403.
+ *
+ * GET returns all rows for user_id + week_start (array, oldest first).
+ * PUT upserts on (user_id, measured_on); week_start is computed server-side.
  */
 
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
@@ -19,7 +22,7 @@ const corsHeaders = {
   "Access-Control-Allow-Methods": "GET, POST, PUT, OPTIONS",
 };
 
-const WEEK_START_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -35,12 +38,40 @@ function requiredEnv(name: string): string | null {
   return value && value.length > 0 ? value : null;
 }
 
-function isValidWeekStart(value: unknown): value is string {
-  return typeof value === "string" && WEEK_START_PATTERN.test(value);
+function isValidDate(value: unknown): value is string {
+  if (typeof value !== "string" || !DATE_PATTERN.test(value)) return false;
+  const [year, month, day] = value.split("-").map(Number);
+  const dt = new Date(Date.UTC(year, month - 1, day));
+  return (
+    dt.getUTCFullYear() === year &&
+    dt.getUTCMonth() === month - 1 &&
+    dt.getUTCDate() === day
+  );
 }
 
 function isUuid(value: string): boolean {
   return UUID_PATTERN.test(value);
+}
+
+/** Monday of the calendar week containing measuredOn (YYYY-MM-DD). */
+function weekStartFromMeasuredOn(measuredOn: string): string {
+  const [year, month, day] = measuredOn.split("-").map(Number);
+  const result = new Date(Date.UTC(year, month - 1, day));
+  const dow = result.getUTCDay(); // 0=Sun … 6=Sat
+  const daysBackToMonday = dow === 0 ? 6 : dow - 1;
+  result.setUTCDate(result.getUTCDate() - daysBackToMonday);
+  const y = result.getUTCFullYear();
+  const m = String(result.getUTCMonth() + 1).padStart(2, "0");
+  const d = String(result.getUTCDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
+
+function utcToday(): string {
+  const now = new Date();
+  const y = now.getUTCFullYear();
+  const m = String(now.getUTCMonth() + 1).padStart(2, "0");
+  const d = String(now.getUTCDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
 }
 
 /** Returns an error message if invalid, otherwise null. */
@@ -105,7 +136,7 @@ Deno.serve(async (req: Request) => {
   if (req.method === "GET") {
     const url = new URL(req.url);
     const weekStart = url.searchParams.get("week_start");
-    if (!isValidWeekStart(weekStart)) {
+    if (!isValidDate(weekStart)) {
       return jsonResponse(
         {
           error:
@@ -145,14 +176,14 @@ Deno.serve(async (req: Request) => {
       .select("*")
       .eq("user_id", subjectId)
       .eq("week_start", weekStart)
-      .maybeSingle();
+      .order("measured_on", { ascending: true });
 
     if (selectError) {
       console.error("weight-measurements: select failed", selectError);
       return jsonResponse({ error: "Unable to load measurements" }, 500);
     }
 
-    return jsonResponse({ data: data ?? null }, 200);
+    return jsonResponse({ data: data ?? [] }, 200);
   }
 
   // PUT
@@ -169,12 +200,19 @@ Deno.serve(async (req: Request) => {
 
   const record = body as Record<string, unknown>;
 
-  if (!isValidWeekStart(record.week_start)) {
+  const measuredOnRaw = record.measured_on;
+  const measured_on =
+    measuredOnRaw === undefined || measuredOnRaw === null
+      ? utcToday()
+      : measuredOnRaw;
+  if (!isValidDate(measured_on)) {
     return jsonResponse(
-      { error: "week_start is required and must be YYYY-MM-DD" },
+      { error: "measured_on is required and must be YYYY-MM-DD" },
       400,
     );
   }
+
+  const week_start = weekStartFromMeasuredOn(measured_on);
 
   const metrics: Record<
     "weight" | "waist" | "hips" | "arm" | "thigh" | "calve",
@@ -215,14 +253,13 @@ Deno.serve(async (req: Request) => {
     );
   }
 
-  const week_start = record.week_start;
-
   const { error: upsertError } = await callerClient
     .from("weight_measurements")
     .upsert(
       {
         user_id: user.id,
         week_start,
+        measured_on,
         weight: metrics.weight,
         waist: metrics.waist,
         hips: metrics.hips,
@@ -230,7 +267,7 @@ Deno.serve(async (req: Request) => {
         thigh: metrics.thigh,
         calve: metrics.calve,
       },
-      { onConflict: "user_id,week_start" },
+      { onConflict: "user_id,measured_on" },
     );
 
   if (upsertError) {
