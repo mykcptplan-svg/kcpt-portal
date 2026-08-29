@@ -95,9 +95,10 @@ export default function DayAccordion({
               disabled={!canCopy || copying}
               aria-label={`Copy ${day} to next week`}
               title="Copy to next week"
-              className="mr-1 flex h-9 w-9 shrink-0 cursor-pointer items-center justify-center rounded-full text-muted transition-colors hover:bg-badge-bg hover:text-brand-orange-dark disabled:cursor-not-allowed disabled:opacity-40"
+              className="mr-1 flex h-9 shrink-0 cursor-pointer items-center gap-1 rounded-full px-2 text-muted transition-colors hover:bg-badge-bg hover:text-brand-orange-dark disabled:cursor-not-allowed disabled:opacity-40"
             >
               <CopyIcon className="h-4 w-4" />
+              <span className="text-[11px] font-semibold">Copy</span>
             </button>
           ))}
       </div>

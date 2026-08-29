@@ -104,9 +104,10 @@ export default function MealSectionCard({
                   disabled={disabled || copyingIndex === index}
                   aria-label={`Add this ${title.toLowerCase().replace(/s$/, "")} to next week`}
                   title="Add to next week"
-                  className="flex h-9 w-9 shrink-0 cursor-pointer items-center justify-center rounded-full text-muted transition-colors hover:bg-badge-bg hover:text-brand-orange-dark disabled:cursor-not-allowed disabled:opacity-50"
+                  className="flex h-9 shrink-0 cursor-pointer items-center gap-1 rounded-full px-2 text-muted transition-colors hover:bg-badge-bg hover:text-brand-orange-dark disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   <CopyIcon className="h-4 w-4" />
+                  <span className="text-[11px] font-semibold">Copy</span>
                 </button>
               )}
             </div>
