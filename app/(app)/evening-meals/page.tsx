@@ -9,6 +9,11 @@ import WeekToggle from "@/components/WeekToggle";
 import { BulbIcon, UtensilsIcon } from "@/components/icons";
 import { getWeeklyBasePlan, saveWeeklyBasePlan } from "@/lib/api/basePlan";
 import { discardNextWeekDraft } from "@/lib/api/nextWeekDraft";
+import {
+  copyEveningMealDayToNextWeek,
+  hasEveningMealForDay,
+} from "@/lib/copyFoodPlanToNextWeek";
+import { useProfile } from "@/lib/context/ProfileContext";
 import { useDebouncedSave } from "@/lib/hooks/useDebouncedSave";
 import { createClient } from "@/lib/supabase/client";
 import {
@@ -77,6 +82,8 @@ function EveningMealsPageInner() {
     [searchParams],
   );
   const viewingNextWeek = weekStart === nextWeekStart;
+  const { profile } = useProfile();
+  const isRevoked = profile?.status === "revoked";
 
   const [entries, setEntries] = useState<DayEntry[]>(emptyEntries);
   const [expandedIndex, setExpandedIndex] = useState(0);
@@ -85,6 +92,10 @@ function EveningMealsPageInner() {
   const [hasNextWeekDraft, setHasNextWeekDraft] = useState(false);
   const [discarding, setDiscarding] = useState(false);
   const [discardError, setDiscardError] = useState<string | null>(null);
+  const [copyDayConfirming, setCopyDayConfirming] = useState<string | null>(null);
+  const [copyingDay, setCopyingDay] = useState<string | null>(null);
+  const [copyMessage, setCopyMessage] = useState<string | null>(null);
+  const [copyError, setCopyError] = useState<string | null>(null);
 
   const preservedRef = useRef<PreservedFields>({ ...DEFAULT_PRESERVED });
 
@@ -239,6 +250,61 @@ function EveningMealsPageInner() {
     { skip: loading },
   );
 
+  const showCopyActions = !viewingNextWeek && !isRevoked;
+
+  async function executeCopyDay(day: string, index: number, accessToken: string) {
+    setCopyingDay(day);
+    setCopyError(null);
+    setCopyMessage(null);
+    try {
+      await copyEveningMealDayToNextWeek(day, entries[index], accessToken);
+      setHasNextWeekDraft(true);
+      setCopyDayConfirming(null);
+      setCopyMessage("Copied to next week.");
+    } catch (err) {
+      setCopyError(
+        err instanceof Error ? err.message : "Unable to copy to next week.",
+      );
+    } finally {
+      setCopyingDay(null);
+    }
+  }
+
+  async function handleCopyDay(day: string, index: number) {
+    const entry = entries[index];
+    if (!entry.meal.trim() && entry.approach === null) return;
+
+    const accessToken = await getAccessToken();
+    if (!accessToken) {
+      setCopyError("Not logged in.");
+      return;
+    }
+
+    setCopyError(null);
+    setCopyMessage(null);
+    try {
+      const nextPlan = await getWeeklyBasePlan(nextWeekStart, accessToken);
+      if (hasEveningMealForDay(nextPlan, day)) {
+        setCopyDayConfirming(day);
+        return;
+      }
+      await executeCopyDay(day, index, accessToken);
+    } catch (err) {
+      setCopyError(
+        err instanceof Error ? err.message : "Unable to copy to next week.",
+      );
+    }
+  }
+
+  async function handleCopyDayConfirm(day: string, index: number) {
+    const accessToken = await getAccessToken();
+    if (!accessToken) {
+      setCopyError("Not logged in.");
+      return;
+    }
+    await executeCopyDay(day, index, accessToken);
+  }
+
   if (loading) {
     return (
       <div className="flex flex-1 items-center justify-center px-6 py-10">
@@ -281,6 +347,13 @@ function EveningMealsPageInner() {
 
       <AutosaveStatus status={status} />
 
+      {copyMessage && (
+        <p className="text-[12px] font-semibold text-[#8fae8a]">{copyMessage}</p>
+      )}
+      {copyError && (
+        <p className="text-xs text-brand-orange-dark">{copyError}</p>
+      )}
+
       <div className="flex flex-col gap-2.5">
         {DAY_NAMES.map((day, index) => (
           <DayAccordion
@@ -294,6 +367,16 @@ function EveningMealsPageInner() {
             }
             onMealChange={(value) => updateEntry(index, { meal: value })}
             onSelectApproach={(value) => updateEntry(index, { approach: value })}
+            showCopy={showCopyActions}
+            canCopy={
+              entries[index].meal.trim().length > 0 ||
+              entries[index].approach !== null
+            }
+            copying={copyingDay === day}
+            copyConfirming={copyDayConfirming === day}
+            onCopy={() => void handleCopyDay(day, index)}
+            onCopyConfirm={() => void handleCopyDayConfirm(day, index)}
+            onCopyCancel={() => setCopyDayConfirming(null)}
           />
         ))}
       </div>

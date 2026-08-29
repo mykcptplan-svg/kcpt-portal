@@ -18,6 +18,13 @@ import {
 } from "@/components/icons";
 import { getWeeklyBasePlan, saveWeeklyBasePlan } from "@/lib/api/basePlan";
 import { discardNextWeekDraft } from "@/lib/api/nextWeekDraft";
+import {
+  appendMealItemToNextWeek,
+  copyWholePlanToNextWeek,
+  isFoodPlanEmpty,
+  type MealSectionKey,
+  MealListFullError,
+} from "@/lib/copyFoodPlanToNextWeek";
 import { useProfile } from "@/lib/context/ProfileContext";
 import { useDebouncedSave } from "@/lib/hooks/useDebouncedSave";
 import { createClient } from "@/lib/supabase/client";
@@ -65,6 +72,14 @@ function PlanPageInner() {
   const [hasNextWeekDraft, setHasNextWeekDraft] = useState(false);
   const [discarding, setDiscarding] = useState(false);
   const [discardError, setDiscardError] = useState<string | null>(null);
+  const [copyWholeConfirming, setCopyWholeConfirming] = useState(false);
+  const [copyingWhole, setCopyingWhole] = useState(false);
+  const [copyingItem, setCopyingItem] = useState<{
+    section: MealSectionKey;
+    index: number;
+  } | null>(null);
+  const [copyMessage, setCopyMessage] = useState<string | null>(null);
+  const [copyError, setCopyError] = useState<string | null>(null);
   // Evening Meals owns this field; we only round-trip it so autosaving the
   // rest of the plan never clobbers it.
   const eveningMealsRef = useRef<EveningMealEntry[]>([]);
@@ -218,6 +233,101 @@ function PlanPageInner() {
     { skip: loading },
   );
 
+  const showCopyActions = !viewingNextWeek && !isRevoked;
+
+  async function executeCopyWhole(accessToken: string) {
+    setCopyingWhole(true);
+    setCopyError(null);
+    setCopyMessage(null);
+    try {
+      await copyWholePlanToNextWeek(
+        {
+          nutrition_approach: nutritionApproach,
+          breakfasts: breakfasts.filter((v) => v.trim().length > 0),
+          lunches: lunches.filter((v) => v.trim().length > 0),
+          trigger_snacks: triggerSnacks.filter((v) => v.trim().length > 0),
+          desserts: desserts.filter((v) => v.trim().length > 0),
+          evening_meals: eveningMealsRef.current,
+        },
+        accessToken,
+      );
+      setHasNextWeekDraft(true);
+      setCopyWholeConfirming(false);
+      setCopyMessage("Copied to next week.");
+    } catch (err) {
+      setCopyError(
+        err instanceof Error ? err.message : "Unable to copy to next week.",
+      );
+    } finally {
+      setCopyingWhole(false);
+    }
+  }
+
+  async function handleCopyWholeClick() {
+    const accessToken = await getAccessToken();
+    if (!accessToken) {
+      setCopyError("Not logged in.");
+      return;
+    }
+    setCopyError(null);
+    setCopyMessage(null);
+    try {
+      const nextPlan = await getWeeklyBasePlan(nextWeekStart, accessToken);
+      if (!isFoodPlanEmpty(nextPlan)) {
+        setCopyWholeConfirming(true);
+        return;
+      }
+      await executeCopyWhole(accessToken);
+    } catch (err) {
+      setCopyError(
+        err instanceof Error ? err.message : "Unable to copy to next week.",
+      );
+    }
+  }
+
+  async function handleCopyWholeConfirm() {
+    const accessToken = await getAccessToken();
+    if (!accessToken) {
+      setCopyError("Not logged in.");
+      return;
+    }
+    await executeCopyWhole(accessToken);
+  }
+
+  async function handleCopyItem(section: MealSectionKey, index: number) {
+    const lists: Record<MealSectionKey, string[]> = {
+      breakfasts,
+      lunches,
+      trigger_snacks: triggerSnacks,
+      desserts,
+    };
+    const item = lists[section][index]?.trim();
+    if (!item) return;
+
+    const accessToken = await getAccessToken();
+    if (!accessToken) {
+      setCopyError("Not logged in.");
+      return;
+    }
+
+    setCopyingItem({ section, index });
+    setCopyError(null);
+    setCopyMessage(null);
+    try {
+      await appendMealItemToNextWeek(section, item, accessToken);
+      setHasNextWeekDraft(true);
+      setCopyMessage("Copied to next week.");
+    } catch (err) {
+      setCopyError(
+        err instanceof MealListFullError || err instanceof Error
+          ? err.message
+          : "Unable to copy to next week.",
+      );
+    } finally {
+      setCopyingItem(null);
+    }
+  }
+
   if (loading) {
     return (
       <div className="flex flex-1 items-center justify-center px-6 py-10">
@@ -246,6 +356,49 @@ function PlanPageInner() {
           discarding={discarding}
           discardError={discardError}
         />
+      )}
+
+      {showCopyActions && (
+        <div className="flex flex-col gap-1.5">
+          {copyWholeConfirming ? (
+            <div className="flex flex-wrap items-center gap-2 text-[12px] font-semibold">
+              <span className="text-muted">
+                Next week already has a food plan. Replace it?
+              </span>
+              <button
+                type="button"
+                onClick={() => void handleCopyWholeConfirm()}
+                disabled={copyingWhole}
+                className="text-brand-orange-dark underline decoration-dotted underline-offset-2 disabled:opacity-60"
+              >
+                {copyingWhole ? "Copying…" : "Yes, replace"}
+              </button>
+              <button
+                type="button"
+                onClick={() => setCopyWholeConfirming(false)}
+                disabled={copyingWhole}
+                className="text-muted underline decoration-dotted underline-offset-2 disabled:opacity-60"
+              >
+                Cancel
+              </button>
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={() => void handleCopyWholeClick()}
+              disabled={copyingWhole}
+              className="self-start text-[12px] font-semibold text-muted underline decoration-dotted underline-offset-2 transition-colors hover:text-brand-orange-dark disabled:opacity-60"
+            >
+              {copyingWhole ? "Copying to next week…" : "Copy to next week"}
+            </button>
+          )}
+          {copyMessage && (
+            <p className="text-[12px] font-semibold text-[#8fae8a]">{copyMessage}</p>
+          )}
+          {copyError && (
+            <p className="text-xs text-brand-orange-dark">{copyError}</p>
+          )}
+        </div>
       )}
 
       {isRevoked && (
@@ -282,6 +435,11 @@ function PlanPageInner() {
           maxItems={3}
           placeholder="e.g. Greek yogurt with berries"
           disabled={isRevoked}
+          showCopy={showCopyActions}
+          copyingIndex={
+            copyingItem?.section === "breakfasts" ? copyingItem.index : null
+          }
+          onCopyItem={(index) => void handleCopyItem("breakfasts", index)}
         />
 
         <MealSectionCard
@@ -294,6 +452,11 @@ function PlanPageInner() {
           maxItems={3}
           placeholder="e.g. Grilled chicken salad"
           disabled={isRevoked}
+          showCopy={showCopyActions}
+          copyingIndex={
+            copyingItem?.section === "lunches" ? copyingItem.index : null
+          }
+          onCopyItem={(index) => void handleCopyItem("lunches", index)}
         />
 
         <MealSectionCard
@@ -306,6 +469,11 @@ function PlanPageInner() {
           maxItems={3}
           placeholder="e.g. Chips"
           disabled={isRevoked}
+          showCopy={showCopyActions}
+          copyingIndex={
+            copyingItem?.section === "trigger_snacks" ? copyingItem.index : null
+          }
+          onCopyItem={(index) => void handleCopyItem("trigger_snacks", index)}
         />
 
         <MealSectionCard
@@ -318,6 +486,11 @@ function PlanPageInner() {
           maxItems={2}
           placeholder="e.g. Dark chocolate square"
           disabled={isRevoked}
+          showCopy={showCopyActions}
+          copyingIndex={
+            copyingItem?.section === "desserts" ? copyingItem.index : null
+          }
+          onCopyItem={(index) => void handleCopyItem("desserts", index)}
         />
       </div>
 

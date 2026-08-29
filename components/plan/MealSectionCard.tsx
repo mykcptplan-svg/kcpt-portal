@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { CopyIcon } from "@/components/icons";
 
 type MealSectionCardProps = {
   title: string;
@@ -10,6 +11,9 @@ type MealSectionCardProps = {
   maxItems: number;
   placeholder?: string;
   disabled?: boolean;
+  showCopy?: boolean;
+  copyingIndex?: number | null;
+  onCopyItem?: (index: number) => void;
 };
 
 // All current callers keep maxItems - minRequired <= 1, so at most one
@@ -25,6 +29,9 @@ export default function MealSectionCard({
   maxItems,
   placeholder = "Describe your meal",
   disabled = false,
+  showCopy = false,
+  copyingIndex = null,
+  onCopyItem,
 }: MealSectionCardProps) {
   function updateAt(index: number, value: string) {
     const next = [...values];
@@ -90,6 +97,18 @@ export default function MealSectionCard({
                 disabled={disabled}
                 className="h-11 min-w-0 flex-1 rounded-[10px] border border-border bg-background px-3 text-[13.5px] text-foreground outline-none focus:border-brand-orange disabled:cursor-not-allowed disabled:opacity-60"
               />
+              {showCopy && value.trim().length > 0 && onCopyItem && (
+                <button
+                  type="button"
+                  onClick={() => onCopyItem(index)}
+                  disabled={disabled || copyingIndex === index}
+                  aria-label={`Add this ${title.toLowerCase().replace(/s$/, "")} to next week`}
+                  title="Add to next week"
+                  className="flex h-9 w-9 shrink-0 cursor-pointer items-center justify-center rounded-full text-muted transition-colors hover:bg-badge-bg hover:text-brand-orange-dark disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <CopyIcon className="h-4 w-4" />
+                </button>
+              )}
             </div>
           );
         })}
