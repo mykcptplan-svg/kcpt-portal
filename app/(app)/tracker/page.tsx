@@ -56,7 +56,7 @@ const PILLAR_INFO = {
     "Tracking protein? Enter your daily total. Not tracking? If you've been consistent with your protein intake that day, simply tick the box.",
   water: "Enter the litres of water you drank today.",
   steps:
-    "Enter your total steps for each day, or switch to Weekly avg and enter one average for the whole week.",
+    "Enter your total steps for each day, or switch to Weekly total and enter one total for the whole week.",
   workout: "Please tick the box if you completed a workout on this day.",
 } as const;
 
@@ -326,7 +326,7 @@ function TrackerPageInner() {
         };
       }
       const n = Number(raw);
-      const value = Number.isFinite(n) ? n : null;
+      const value = Number.isFinite(n) ? n / 7 : null;
       return {
         ...prev,
         steps: Array(7).fill(value) as (number | null)[],
@@ -604,7 +604,7 @@ function TrackerPageInner() {
             </Fragment>
           ))}
 
-          {/* Steps — daily grid or weekly average */}
+          {/* Steps — daily grid or weekly total */}
           <div className="col-span-8 flex flex-col gap-1.5 pr-1.5">
             <div className="flex w-full items-center justify-between gap-1 text-xs font-bold leading-tight text-foreground">
               <span>Steps</span>
@@ -633,13 +633,13 @@ function TrackerPageInner() {
                         : "text-muted hover:text-foreground"
                     }`}
                   >
-                    Weekly avg
+                    Weekly total
                   </button>
                 </div>
                 {stepsModeConfirming && (
                   <div className="flex flex-wrap items-center gap-1.5 text-[11px] font-semibold">
                     <span className="text-muted">
-                      Replace daily steps with one weekly average?
+                      Replace daily steps with one weekly total?
                     </span>
                     <button
                       type="button"
@@ -665,7 +665,7 @@ function TrackerPageInner() {
               <div aria-hidden />
               <div className="col-span-7 flex items-center gap-2">
                 <label htmlFor="steps-weekly-avg" className="sr-only">
-                  Weekly average steps
+                  Total steps this week
                 </label>
                 <input
                   id="steps-weekly-avg"
@@ -674,16 +674,16 @@ function TrackerPageInner() {
                   min={0}
                   value={
                     dailyMetrics.steps[0] != null
-                      ? String(dailyMetrics.steps[0])
+                      ? String(Math.round(dailyMetrics.steps[0] * 7))
                       : ""
                   }
                   onChange={(e) => setStepsWeekly(e.target.value)}
                   disabled={isRevoked}
-                  placeholder="e.g. 8000"
+                  placeholder="e.g. 70000"
                   className="h-9 w-full max-w-[11rem] rounded-[10px] border border-border bg-background px-3 text-center text-[13.5px] font-semibold text-foreground outline-none focus:border-brand-orange disabled:cursor-not-allowed disabled:opacity-60 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
                 />
                 <span className="shrink-0 text-[11px] font-semibold text-muted">
-                  avg steps / day
+                  total steps / week
                 </span>
               </div>
             </>
