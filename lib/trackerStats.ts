@@ -71,3 +71,18 @@ export function formatPillarCellValue(
   if (metric === "water") return String(value);
   return formatAbbreviated(value);
 }
+
+/** True when all 7 steps slots are non-null and equal (weekly-average shape). */
+export function isUniformSteps(steps: (number | null)[]): boolean {
+  if (steps.length !== 7) return false;
+  const first = steps[0];
+  if (first == null) return false;
+  return steps.every((v) => v === first);
+}
+
+/** Infer Steps UI mode from saved data: uniform filled week → weekly, else daily. */
+export function inferStepsMode(
+  steps: (number | null)[],
+): "daily" | "weekly" {
+  return isUniformSteps(steps) ? "weekly" : "daily";
+}

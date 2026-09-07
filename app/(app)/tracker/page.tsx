@@ -20,7 +20,7 @@ import { useProfile } from "@/lib/context/ProfileContext";
 import { ensureNextWeekDraft } from "@/lib/ensureNextWeekDraft";
 import { useDebouncedSave } from "@/lib/hooks/useDebouncedSave";
 import { createClient } from "@/lib/supabase/client";
-import { formatPillarCellValue } from "@/lib/trackerStats";
+import { formatPillarCellValue, inferStepsMode, isUniformSteps } from "@/lib/trackerStats";
 import { getNextWeekStart, getWeekStart, parseWeekStartParam } from "@/lib/week";
 import type { DailyMetrics } from "@/types";
 
@@ -42,12 +42,11 @@ const HABIT_PLACEHOLDERS = [
 ] as const;
 
 const NUMERIC_PILLAR_ROWS: {
-  key: "protein" | "water" | "steps";
+  key: "protein" | "water";
   label: string;
 }[] = [
   { key: "protein", label: "Protein (g)" },
   { key: "water", label: "Water (L)" },
-  { key: "steps", label: "Steps" },
 ];
 
 const PILLAR_INFO = {
@@ -56,7 +55,8 @@ const PILLAR_INFO = {
   protein:
     "Tracking protein? Enter your daily total. Not tracking? If you've been consistent with your protein intake that day, simply tick the box.",
   water: "Enter the litres of water you drank today.",
-  steps: "Enter your total steps for the day.",
+  steps:
+    "Enter your total steps for each day, or switch to Weekly avg and enter one average for the whole week.",
   workout: "Please tick the box if you completed a workout on this day.",
 } as const;
 
@@ -156,6 +156,8 @@ function TrackerPageInner() {
   const [hasNextWeekDraft, setHasNextWeekDraft] = useState(false);
   const [discarding, setDiscarding] = useState(false);
   const [discardError, setDiscardError] = useState<string | null>(null);
+  const [stepsMode, setStepsMode] = useState<"daily" | "weekly">("daily");
+  const [stepsModeConfirming, setStepsModeConfirming] = useState(false);
   const [activeCell, setActiveCell] = useState<{
     metric: PillarEntryMetric;
     dayIdx: number;
@@ -191,12 +193,17 @@ function TrackerPageInner() {
           setDailyMetrics(emptyMetrics());
           setWins(["", "", ""]);
           setNextWeekFocus(["", "", ""]);
+          setStepsMode("daily");
+          setStepsModeConfirming(false);
           return;
         }
 
         const names = tracker.non_negotiables ?? [];
         setNonNegotiables([0, 1, 2].map((i) => names[i] ?? ""));
-        setDailyMetrics(normalizeDailyMetrics(tracker.daily_metrics));
+        const metrics = normalizeDailyMetrics(tracker.daily_metrics);
+        setDailyMetrics(metrics);
+        setStepsMode(inferStepsMode(metrics.steps));
+        setStepsModeConfirming(false);
         const winList = tracker.wins ?? [];
         setWins([0, 1, 2].map((i) => winList[i] ?? ""));
         const focusList = tracker.next_week_focus ?? [];
@@ -308,6 +315,54 @@ function TrackerPageInner() {
       }
       return { ...prev, [key]: nextRow };
     });
+  }
+
+  function setStepsWeekly(raw: string) {
+    setDailyMetrics((prev) => {
+      if (raw.trim() === "") {
+        return {
+          ...prev,
+          steps: Array(7).fill(null) as (number | null)[],
+        };
+      }
+      const n = Number(raw);
+      const value = Number.isFinite(n) ? n : null;
+      return {
+        ...prev,
+        steps: Array(7).fill(value) as (number | null)[],
+      };
+    });
+  }
+
+  function requestStepsWeeklyMode() {
+    const steps = dailyMetrics.steps;
+    const hasAny = steps.some((v) => v != null);
+    if (hasAny && !isUniformSteps(steps)) {
+      setStepsModeConfirming(true);
+      return;
+    }
+    setStepsModeConfirming(false);
+    setStepsMode("weekly");
+    if (activeCell?.metric === "steps") {
+      setActiveCell(null);
+    }
+  }
+
+  function confirmStepsWeeklyMode() {
+    setDailyMetrics((prev) => ({
+      ...prev,
+      steps: Array(7).fill(null) as (number | null)[],
+    }));
+    setStepsMode("weekly");
+    setStepsModeConfirming(false);
+    if (activeCell?.metric === "steps") {
+      setActiveCell(null);
+    }
+  }
+
+  function switchStepsToDaily() {
+    setStepsModeConfirming(false);
+    setStepsMode("daily");
   }
 
   function setCalorieNumber(dayIdx: number, raw: string) {
@@ -548,6 +603,122 @@ function TrackerPageInner() {
               })}
             </Fragment>
           ))}
+
+          {/* Steps — daily grid or weekly average */}
+          <div className="col-span-8 flex flex-col gap-1.5 pr-1.5">
+            <div className="flex w-full items-center justify-between gap-1 text-xs font-bold leading-tight text-foreground">
+              <span>Steps</span>
+              <PillarInfoButton label="Steps" text={PILLAR_INFO.steps} />
+            </div>
+            {!isRevoked && (
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="inline-flex rounded-full border border-border bg-background p-0.5">
+                  <button
+                    type="button"
+                    onClick={switchStepsToDaily}
+                    className={`rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide transition-colors ${
+                      stepsMode === "daily"
+                        ? "bg-brand-gradient text-white"
+                        : "text-muted hover:text-foreground"
+                    }`}
+                  >
+                    Daily
+                  </button>
+                  <button
+                    type="button"
+                    onClick={requestStepsWeeklyMode}
+                    className={`rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide transition-colors ${
+                      stepsMode === "weekly"
+                        ? "bg-brand-gradient text-white"
+                        : "text-muted hover:text-foreground"
+                    }`}
+                  >
+                    Weekly avg
+                  </button>
+                </div>
+                {stepsModeConfirming && (
+                  <div className="flex flex-wrap items-center gap-1.5 text-[11px] font-semibold">
+                    <span className="text-muted">
+                      Replace daily steps with one weekly average?
+                    </span>
+                    <button
+                      type="button"
+                      onClick={confirmStepsWeeklyMode}
+                      className="text-brand-orange-dark underline decoration-dotted underline-offset-2"
+                    >
+                      Yes, replace
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setStepsModeConfirming(false)}
+                      className="text-muted underline decoration-dotted underline-offset-2"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+          {stepsMode === "weekly" ? (
+            <>
+              <div aria-hidden />
+              <div className="col-span-7 flex items-center gap-2">
+                <label htmlFor="steps-weekly-avg" className="sr-only">
+                  Weekly average steps
+                </label>
+                <input
+                  id="steps-weekly-avg"
+                  type="number"
+                  inputMode="numeric"
+                  min={0}
+                  value={
+                    dailyMetrics.steps[0] != null
+                      ? String(dailyMetrics.steps[0])
+                      : ""
+                  }
+                  onChange={(e) => setStepsWeekly(e.target.value)}
+                  disabled={isRevoked}
+                  placeholder="e.g. 8000"
+                  className="h-9 w-full max-w-[11rem] rounded-[10px] border border-border bg-background px-3 text-center text-[13.5px] font-semibold text-foreground outline-none focus:border-brand-orange disabled:cursor-not-allowed disabled:opacity-60 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                />
+                <span className="shrink-0 text-[11px] font-semibold text-muted">
+                  avg steps / day
+                </span>
+              </div>
+            </>
+          ) : (
+            <>
+              <div aria-hidden />
+              {dailyMetrics.steps.map((value, dayIdx) => {
+                const filled = value != null;
+                const isActive =
+                  activeCell?.metric === "steps" &&
+                  activeCell.dayIdx === dayIdx;
+                return (
+                  <div key={`steps-${dayIdx}`} className="flex justify-center">
+                    <button
+                      type="button"
+                      onClick={() => setActiveCell({ metric: "steps", dayIdx })}
+                      aria-label={`Steps — ${DAY_LABELS[dayIdx]}`}
+                      disabled={isRevoked}
+                      className={`flex h-[34px] w-full min-w-0 max-w-[68px] items-center justify-center rounded-lg text-[11px] font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
+                        isRevoked ? "" : "cursor-pointer"
+                      } ${
+                        filled
+                          ? "bg-brand-gradient text-white"
+                          : "border border-foreground/25 bg-background text-muted"
+                      } ${isActive ? "ring-2 ring-brand-orange ring-offset-1 ring-offset-card" : ""}`}
+                    >
+                      {typeof value === "number"
+                        ? formatPillarCellValue("steps", value)
+                        : "–"}
+                    </button>
+                  </div>
+                );
+              })}
+            </>
+          )}
 
           {/* Workout — checkboxes */}
           <div className="flex w-full items-center justify-between gap-1 pr-1.5 text-xs font-bold leading-tight text-foreground">
