@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import Link from "next/link";
 import HeartLoader from "@/components/HeartLoader";
 import SectionDetail, {
   type HistorySectionKey,
@@ -17,13 +18,15 @@ import { exportWeekPdf } from "@/lib/api/exportPdf";
 import { getWeeksList, type WeekSummary } from "@/lib/api/history";
 import { getWeightMeasurement } from "@/lib/api/measurements";
 import { getWeeklyTracker } from "@/lib/api/tracker";
+import { useProfile } from "@/lib/context/ProfileContext";
+import { buildMemberWeeksList } from "@/lib/historyWeeks";
 import { countMealSlotsFilled } from "@/lib/planStats";
 import { createClient } from "@/lib/supabase/client";
 import {
   countTrackerDaysLogged,
   findClosestEarlierMeasuredWeek,
 } from "@/lib/trackerStats";
-import { formatWeekRange } from "@/lib/week";
+import { formatWeekRange, getWeekStart } from "@/lib/week";
 import type {
   WeeklyBasePlan,
   WeeklyTrackerEntry,
@@ -64,6 +67,18 @@ const STATUS_STYLES = {
   },
 } as const;
 
+const EDIT_PATHS: Record<HistorySectionKey, { path: string; param: string }> = {
+  food: { path: "/plan", param: "week_start" },
+  tracker: { path: "/tracker", param: "week_start" },
+  measurements: { path: "/measurements", param: "date" },
+};
+
+/** Current week: plain link. Past weeks and the next-week draft: param link. */
+function editHref(key: HistorySectionKey, weekStart: string): string {
+  const { path, param } = EDIT_PATHS[key];
+  return weekStart === getWeekStart() ? path : `${path}?${param}=${weekStart}`;
+}
+
 function measurementSummary(
   week: WeekSummary,
   detail: WeekDetailCache | undefined,
@@ -92,9 +107,17 @@ function measurementSummary(
 export default function HistoryPage() {
   const supabase = useMemo(() => createClient(), []);
 
-  const [weeks, setWeeks] = useState<WeekSummary[]>([]);
+  const { profile } = useProfile();
+  const isRevoked = profile?.status === "revoked";
+  const createdAt = profile?.created_at ?? null;
+
+  const [apiWeeks, setApiWeeks] = useState<WeekSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const weeks = useMemo(
+    () => (loadError ? [] : buildMemberWeeksList(apiWeeks, createdAt)),
+    [apiWeeks, createdAt, loadError],
+  );
   const [expandedWeekStart, setExpandedWeekStart] = useState<string | null>(
     null,
   );
@@ -137,10 +160,8 @@ export default function HistoryPage() {
         const list = await getWeeksList(session.access_token);
         if (cancelled) return;
 
-        setWeeks(list);
-        if (list.length > 0) {
-          setExpandedWeekStart(list[0].week_start);
-        }
+        setApiWeeks(list);
+        setExpandedWeekStart(getWeekStart());
       } catch (err) {
         if (!cancelled) {
           setLoadError(
@@ -303,13 +324,6 @@ export default function HistoryPage() {
         <p className="text-xs text-brand-orange-dark">{loadError}</p>
       )}
 
-      {!loadError && weeks.length === 0 && (
-        <p className="text-sm text-muted">
-          No weeks logged yet. Your history will show up here as you fill in
-          your plan, tracker, and measurements.
-        </p>
-      )}
-
       {downloadError && (
         <p className="text-xs text-brand-orange-dark">{downloadError}</p>
       )}
@@ -322,6 +336,8 @@ export default function HistoryPage() {
           const detail = detailCache[week.week_start];
           const isExpandLoading = expandLoading === week.week_start;
           const isDownloading = downloadingWeekStart === week.week_start;
+          const hasAnyData =
+            week.has_base_plan || week.has_tracker || week.has_measurements;
 
           const trackerDays = countTrackerDaysLogged(detail?.tracker ?? null);
           const { filled: mealsFilled, total: mealsTotal } =
@@ -400,6 +416,7 @@ export default function HistoryPage() {
                     </span>
                   </span>
                 </button>
+                {hasAnyData && (
                 <button
                   type="button"
                   onClick={() => void handleDownloadPdf(week.week_start)}
@@ -417,6 +434,7 @@ export default function HistoryPage() {
                     <DownloadIcon className="h-4 w-4" />
                   )}
                 </button>
+                )}
                 <button
                   type="button"
                   onClick={() => toggleWeek(week.week_start)}
@@ -480,6 +498,18 @@ export default function HistoryPage() {
 
                             {isSectionOpen && (
                               <div className="mt-2 rounded-[14px] border border-border bg-card p-4">
+                                {!isRevoked &&
+                                  !(
+                                    section.key === "measurements" &&
+                                    week.week_start > getWeekStart()
+                                  ) && (
+                                  <Link
+                                    href={editHref(section.key, week.week_start)}
+                                    className="mb-3 inline-flex rounded-full border border-border bg-card px-3 py-1 text-[12px] font-bold text-brand-orange-dark transition-colors hover:bg-tip-bg"
+                                  >
+                                    Edit
+                                  </Link>
+                                )}
                                 <SectionDetail
                                   sectionKey={section.key}
                                   plan={detail.plan}

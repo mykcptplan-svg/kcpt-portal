@@ -1,8 +1,10 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import AutosaveStatus from "@/components/AutosaveStatus";
 import HeartLoader from "@/components/HeartLoader";
+import PastWeekBanner from "@/components/PastWeekBanner";
 import TipsCard from "@/components/measurements/TipsCard";
 import { ChartIcon, RulerIcon } from "@/components/icons";
 import { getWeeksList } from "@/lib/api/history";
@@ -12,7 +14,13 @@ import {
 } from "@/lib/api/measurements";
 import { useDebouncedSave } from "@/lib/hooks/useDebouncedSave";
 import { createClient } from "@/lib/supabase/client";
-import { formatWeekStart, getWeekStart } from "@/lib/week";
+import {
+  addDaysToDate,
+  formatWeekStart,
+  getWeekStart,
+  isPastWeekStart,
+  parseDateParam,
+} from "@/lib/week";
 import type { WeightMeasurement } from "@/types";
 
 type MetricKey = "weight" | "waist" | "hips";
@@ -141,6 +149,11 @@ function entryFromRow(row: WeightMeasurement): Entry {
   };
 }
 
+function getWeekStartOfDate(date: string): string {
+  const [y, m, d] = date.split("-").map(Number);
+  return getWeekStart(new Date(y, m - 1, d));
+}
+
 function todayLocal(): string {
   return formatWeekStart(new Date());
 }
@@ -160,12 +173,40 @@ function parseNonNegative(raw: string): number | null {
 }
 
 export default function MeasurementsPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex flex-1 items-center justify-center px-6 py-10">
+          <HeartLoader size={192} />
+        </div>
+      }
+    >
+      <MeasurementsPageInner />
+    </Suspense>
+  );
+}
+
+function MeasurementsPageInner() {
+  const searchParams = useSearchParams();
   const supabase = useMemo(() => createClient(), []);
-  const weekStart = useMemo(() => getWeekStart(), []);
+  // Past-week mode is driven by the URL only: ?date=YYYY-MM-DD.
+  const rawDateParam = parseDateParam(searchParams.get("date"));
+  // A date in a week after the current week is ignored (treated as no param).
+  const dateParam =
+    rawDateParam && getWeekStartOfDate(rawDateParam) > getWeekStart()
+      ? null
+      : rawDateParam;
+  const weekStart = useMemo(() => {
+    if (!dateParam) return getWeekStart();
+    const [y, m, d] = dateParam.split("-").map(Number);
+    return getWeekStart(new Date(y, m - 1, d));
+  }, [dateParam]);
+  const isPastWeek = isPastWeekStart(weekStart);
+  const weekEnd = useMemo(() => addDaysToDate(weekStart, 6), [weekStart]);
 
   const [entries, setEntries] = useState<Entry[]>([]);
   const [activeMetric, setActiveMetric] = useState<MetricKey>("weight");
-  const [measuredOn, setMeasuredOn] = useState(todayLocal);
+  const [measuredOn, setMeasuredOn] = useState(() => dateParam ?? todayLocal());
   const [form, setForm] = useState<FormState>(emptyForm);
   const [extraForm, setExtraForm] = useState<ExtraFormState>(emptyExtraForm);
   const [hasSavedEntry, setHasSavedEntry] = useState(false);
@@ -186,6 +227,8 @@ export default function MeasurementsPage() {
     let cancelled = false;
 
     async function load() {
+      setLoading(true);
+      setLoadError(null);
       try {
         const {
           data: { session },
@@ -216,16 +259,16 @@ export default function MeasurementsPage() {
           .map(entryFromRow)
           .sort((a, b) => a.measured_on.localeCompare(b.measured_on));
 
-        const today = todayLocal();
-        const todayEntry =
-          historyEntries.find((e) => e.measured_on === today) ?? null;
+        const initialDate = dateParam ?? todayLocal();
+        const initialEntry =
+          historyEntries.find((e) => e.measured_on === initialDate) ?? null;
 
         setEntries(historyEntries);
-        setMeasuredOn(today);
-        setForm(formFromEntry(todayEntry));
-        setExtraForm(extraFormFromEntry(todayEntry));
-        setHasSavedEntry(todayEntry != null);
-        setIsEditing(todayEntry == null);
+        setMeasuredOn(initialDate);
+        setForm(formFromEntry(initialEntry));
+        setExtraForm(extraFormFromEntry(initialEntry));
+        setHasSavedEntry(initialEntry != null);
+        setIsEditing(initialEntry == null);
         setSkipSave(true);
       } catch (err) {
         if (!cancelled) {
@@ -242,7 +285,7 @@ export default function MeasurementsPage() {
     return () => {
       cancelled = true;
     };
-  }, [supabase, weekStart]);
+  }, [supabase, weekStart, dateParam]);
 
   function setFormField(key: keyof FormState, value: string) {
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -261,6 +304,7 @@ export default function MeasurementsPage() {
   }
 
   function selectMeasuredOn(date: string) {
+    if (isPastWeek && date && (date < weekStart || date > weekEnd)) return;
     setMeasuredOn(date);
     if (!date) {
       applyEntryToForm(null);
@@ -271,6 +315,13 @@ export default function MeasurementsPage() {
   }
 
   function addAnotherEntry() {
+    if (isPastWeek) {
+      const freeDay = Array.from({ length: 7 }, (_, i) =>
+        addDaysToDate(weekStart, i),
+      ).find((day) => !entries.some((e) => e.measured_on === day));
+      selectMeasuredOn(freeDay ?? "");
+      return;
+    }
     const today = todayLocal();
     const todayTaken = entries.some((e) => e.measured_on === today);
     selectMeasuredOn(todayTaken ? "" : today);
@@ -463,6 +514,8 @@ export default function MeasurementsPage() {
         </p>
       </div>
 
+      {isPastWeek && <PastWeekBanner weekStart={weekStart} />}
+
       <AutosaveStatus status={status} />
 
       <TipsCard
@@ -506,7 +559,11 @@ export default function MeasurementsPage() {
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-3">
               <h2 className="font-heading text-base uppercase tracking-wide text-foreground">
-                {hasSavedEntry ? "This week's entries" : "Log an entry"}
+                {hasSavedEntry
+                  ? isPastWeek
+                    ? "Entries for this week"
+                    : "This week's entries"
+                  : "Log an entry"}
               </h2>
               {hasSavedEntry && !isEditing && (
                 <button
@@ -572,6 +629,8 @@ export default function MeasurementsPage() {
           <input
             type="date"
             value={measuredOn}
+            min={isPastWeek ? weekStart : undefined}
+            max={isPastWeek ? weekEnd : undefined}
             onChange={(e) => selectMeasuredOn(e.target.value)}
             className="w-full rounded-[10px] border border-border bg-background px-[13px] py-3 text-[14px] font-semibold text-foreground outline-none focus:border-brand-orange"
           />

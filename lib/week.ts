@@ -81,3 +81,51 @@ export function parseWeekStartParam(raw: string | null): string | null {
   if (getWeekStart(date) !== raw) return null;
   return raw;
 }
+
+/**
+ * True when `weekStart` (a Monday, YYYY-MM-DD) is before the current week.
+ * Plain string comparison is safe for zero-padded YYYY-MM-DD.
+ */
+export function isPastWeekStart(weekStart: string): boolean {
+  return weekStart < getWeekStart();
+}
+
+/**
+ * Parse a `?date=` query value. Returns the string only if it is a real local
+ * calendar date (YYYY-MM-DD, any weekday); otherwise null.
+ */
+export function parseDateParam(raw: string | null): string | null {
+  if (!raw || !WEEK_START_PATTERN.test(raw)) return null;
+  const [year, month, day] = raw.split("-").map(Number);
+  const date = new Date(year, month - 1, day);
+  if (
+    date.getFullYear() !== year ||
+    date.getMonth() !== month - 1 ||
+    date.getDate() !== day
+  ) {
+    return null;
+  }
+  return raw;
+}
+
+/**
+ * Add `days` (may be negative) to a YYYY-MM-DD date using local calendar math.
+ */
+export function addDaysToDate(date: string, days: number): string {
+  const [year, month, day] = date.split("-").map(Number);
+  return formatWeekStart(new Date(year, month - 1, day + days));
+}
+
+/**
+ * Every Monday from `fromMonday` through `toMonday` inclusive, newest first.
+ * Both arguments are YYYY-MM-DD Mondays. Returns [] if from is after to.
+ */
+export function listWeekStarts(fromMonday: string, toMonday: string): string[] {
+  const result: string[] = [];
+  let current = toMonday;
+  while (current >= fromMonday) {
+    result.push(current);
+    current = addDaysToDate(current, -7);
+  }
+  return result;
+}

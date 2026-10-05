@@ -2,9 +2,10 @@
 
 import { Fragment, Suspense, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import AutosaveStatus from "@/components/AutosaveStatus";
 import HeartLoader from "@/components/HeartLoader";
+import PastWeekBanner from "@/components/PastWeekBanner";
 import WeekToggle from "@/components/WeekToggle";
 import {
   CheckIcon,
@@ -19,9 +20,10 @@ import { getWeeklyTracker, saveWeeklyTracker } from "@/lib/api/tracker";
 import { useProfile } from "@/lib/context/ProfileContext";
 import { ensureNextWeekDraft } from "@/lib/ensureNextWeekDraft";
 import { useDebouncedSave } from "@/lib/hooks/useDebouncedSave";
+import { useWeekParam } from "@/lib/hooks/useWeekParam";
 import { createClient } from "@/lib/supabase/client";
 import { formatPillarCellValue, inferStepsMode, isUniformSteps } from "@/lib/trackerStats";
-import { getNextWeekStart, getWeekStart, parseWeekStartParam } from "@/lib/week";
+import { getNextWeekStart } from "@/lib/week";
 import type { DailyMetrics } from "@/types";
 
 const DAY_LABELS = ["M", "T", "W", "T", "F", "S", "S"];
@@ -134,13 +136,9 @@ export default function TrackerPage() {
 function TrackerPageInner() {
   const router = useRouter();
   const pathname = usePathname();
-  const searchParams = useSearchParams();
   const supabase = useMemo(() => createClient(), []);
   const nextWeekStart = useMemo(() => getNextWeekStart(), []);
-  const weekStart = useMemo(
-    () => parseWeekStartParam(searchParams.get("week_start")) ?? getWeekStart(),
-    [searchParams],
-  );
+  const { weekStart, isPastWeek } = useWeekParam();
   const viewingNextWeek = weekStart === nextWeekStart;
   const { profile } = useProfile();
   const isRevoked = profile?.status === "revoked";
@@ -227,6 +225,7 @@ function TrackerPageInner() {
   // draft exists at all, so the WeekToggle knows whether to render. Skipped
   // while already viewing the draft (existence is trivially true).
   useEffect(() => {
+    if (isPastWeek) return;
     if (viewingNextWeek) {
       setHasNextWeekDraft(true);
       return;
@@ -255,7 +254,7 @@ function TrackerPageInner() {
     return () => {
       cancelled = true;
     };
-  }, [supabase, nextWeekStart, viewingNextWeek]);
+  }, [supabase, nextWeekStart, viewingNextWeek, isPastWeek]);
 
   async function handleDiscardDraft() {
     const token = await getAccessToken();
@@ -441,7 +440,9 @@ function TrackerPageInner() {
         </p>
       </div>
 
-      {hasNextWeekDraft && (
+      {isPastWeek && <PastWeekBanner weekStart={weekStart} />}
+
+      {hasNextWeekDraft && !isPastWeek && (
         <WeekToggle
           pathname={pathname}
           nextWeekStart={nextWeekStart}
@@ -866,6 +867,7 @@ function TrackerPageInner() {
           </div>
         </div>
 
+        {!isPastWeek && (
         <div className="mb-4">
           {hasNextWeekDraft ? (
             <Link
@@ -898,6 +900,7 @@ function TrackerPageInner() {
             <p className="mt-2 text-xs text-brand-orange-dark">{nextWeekError}</p>
           )}
         </div>
+        )}
 
         <p className="mt-4 text-[12px] font-medium leading-snug text-muted">
           Your progress is saved automatically. Every Monday your Success Tracker

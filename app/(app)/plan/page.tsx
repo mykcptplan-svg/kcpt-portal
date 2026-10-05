@@ -2,10 +2,11 @@
 
 import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import MealSectionCard from "@/components/plan/MealSectionCard";
 import AutosaveStatus from "@/components/AutosaveStatus";
 import HeartLoader from "@/components/HeartLoader";
+import PastWeekBanner from "@/components/PastWeekBanner";
 import WeekToggle from "@/components/WeekToggle";
 import {
   ArrowRightIcon,
@@ -27,8 +28,9 @@ import {
 } from "@/lib/copyFoodPlanToNextWeek";
 import { useProfile } from "@/lib/context/ProfileContext";
 import { useDebouncedSave } from "@/lib/hooks/useDebouncedSave";
+import { useWeekParam } from "@/lib/hooks/useWeekParam";
 import { createClient } from "@/lib/supabase/client";
-import { getNextWeekStart, getWeekStart, parseWeekStartParam } from "@/lib/week";
+import { getNextWeekStart } from "@/lib/week";
 import type { EveningMealEntry } from "@/types";
 import type { NutritionApproach } from "@/types/plan";
 
@@ -49,13 +51,9 @@ export default function PlanPage() {
 function PlanPageInner() {
   const router = useRouter();
   const pathname = usePathname();
-  const searchParams = useSearchParams();
   const supabase = useMemo(() => createClient(), []);
   const nextWeekStart = useMemo(() => getNextWeekStart(), []);
-  const weekStart = useMemo(
-    () => parseWeekStartParam(searchParams.get("week_start")) ?? getWeekStart(),
-    [searchParams],
-  );
+  const { weekStart, isPastWeek } = useWeekParam();
   const viewingNextWeek = weekStart === nextWeekStart;
   const { profile } = useProfile();
   const isRevoked = profile?.status === "revoked";
@@ -154,6 +152,7 @@ function PlanPageInner() {
   // already viewing the draft (existence is trivially true — you navigated
   // here via the toggle or "Start Next Week's Plan").
   useEffect(() => {
+    if (isPastWeek) return;
     if (viewingNextWeek) {
       setHasNextWeekDraft(true);
       return;
@@ -182,7 +181,7 @@ function PlanPageInner() {
     return () => {
       cancelled = true;
     };
-  }, [supabase, nextWeekStart, viewingNextWeek]);
+  }, [supabase, nextWeekStart, viewingNextWeek, isPastWeek]);
 
   async function handleDiscardDraft() {
     const accessToken = await getAccessToken();
@@ -233,7 +232,7 @@ function PlanPageInner() {
     { skip: loading },
   );
 
-  const showCopyActions = !viewingNextWeek && !isRevoked;
+  const showCopyActions = !viewingNextWeek && !isPastWeek && !isRevoked;
 
   async function executeCopyWhole(accessToken: string) {
     setCopyingWhole(true);
@@ -347,7 +346,9 @@ function PlanPageInner() {
         </p>
       </div>
 
-      {hasNextWeekDraft && (
+      {isPastWeek && <PastWeekBanner weekStart={weekStart} />}
+
+      {hasNextWeekDraft && !isPastWeek && (
         <WeekToggle
           pathname={pathname}
           nextWeekStart={nextWeekStart}
