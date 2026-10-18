@@ -9,8 +9,10 @@
  *   1. Authorize the CALLING user via their Bearer JWT (the admin/coach
  *      doing the invite) — anon key + caller token, RLS on profiles.
  *   2. GET: list auth users with no profiles row (pending invites).
- *   3. POST: reject emails that already have a profiles row (409), delete
- *      any pending auth.users row, then send a fresh invite email.
+ *   3. POST: normalise the email (trim + lowercase), find the auth user
+ *      case-insensitively, and reject (409) if that auth user has a profiles
+ *      row. A user is deleted only when it has no profile AND has never
+ *      confirmed the invite; then a fresh invite email is sent.
  *      The service_role key never appears in responses.
  */
 
@@ -47,7 +49,8 @@ function requiredEnv(name: string): string | null {
 
 /**
  * Exact case-insensitive email match across all auth.users pages.
- * Stops on first match, empty page, or a short final page.
+ * Stops on first match or on an empty page. A short page is not treated as
+ * the last one, so a page that comes back short cannot hide a later match.
  */
 async function findAuthUserByEmail(
   adminClient: SupabaseClient,
@@ -69,12 +72,14 @@ async function findAuthUserByEmail(
     const match = users.find((u) => u.email?.toLowerCase() === normalized);
     if (match) return match;
 
-    if (users.length < LIST_USERS_PER_PAGE) return null;
     page += 1;
   }
 }
 
-/** Collect every auth user across all listUsers pages. */
+/**
+ * Collect every auth user across all listUsers pages.
+ * Stops only on an empty page. A short page is not treated as the last one.
+ */
 async function listAllAuthUsers(adminClient: SupabaseClient): Promise<User[]> {
   const all: User[] = [];
   let page = 1;
@@ -91,7 +96,6 @@ async function listAllAuthUsers(adminClient: SupabaseClient): Promise<User[]> {
 
     all.push(...users);
 
-    if (users.length < LIST_USERS_PER_PAGE) return all;
     page += 1;
   }
 }
@@ -240,31 +244,11 @@ Deno.serve(async (req: Request) => {
     typeof body === "object" &&
     "email" in body &&
     typeof (body as { email: unknown }).email === "string"
-      ? (body as { email: string }).email.trim()
+      ? (body as { email: string }).email.trim().toLowerCase()
       : null;
 
   if (!email || !isPlausibleEmail(email)) {
     return jsonResponse({ error: "A valid email address is required" }, 400);
-  }
-
-  const { data: existingProfile, error: existingProfileError } =
-    await adminClient
-      .from("profiles")
-      .select("id")
-      .eq("email", email)
-      .maybeSingle();
-
-  if (existingProfileError) {
-    console.error("invite-member: profiles lookup failed", {
-      email,
-      message: existingProfileError.message,
-      code: existingProfileError.code,
-    });
-    return jsonResponse({ error: "Unable to send invite" }, 500);
-  }
-
-  if (existingProfile) {
-    return jsonResponse({ error: "This email is already registered" }, 409);
   }
 
   let pendingAuthUser: User | null;
@@ -279,6 +263,41 @@ Deno.serve(async (req: Request) => {
   }
 
   if (pendingAuthUser) {
+    // "Already registered" is decided by the profile that belongs to this auth
+    // user (profiles.id = auth user id), never by matching profiles.email.
+    // profiles.id cascades from auth.users, so deleting a user that has a
+    // profile would delete the member and all their data.
+    const { data: existingProfile, error: existingProfileError } =
+      await adminClient
+        .from("profiles")
+        .select("id")
+        .eq("id", pendingAuthUser.id)
+        .maybeSingle();
+
+    if (existingProfileError) {
+      console.error("invite-member: profiles lookup failed", {
+        email,
+        message: existingProfileError.message,
+        code: existingProfileError.code,
+      });
+      return jsonResponse({ error: "Unable to send invite" }, 500);
+    }
+
+    if (existingProfile) {
+      return jsonResponse({ error: "This email is already registered" }, 409);
+    }
+
+    // No profile, but the invite was already opened: do not delete the user.
+    if (pendingAuthUser.email_confirmed_at != null) {
+      return jsonResponse(
+        {
+          error:
+            "This invitation was already accepted and account setup is not finished. The member should open their invite email or use the set-password link to finish setup.",
+        },
+        409,
+      );
+    }
+
     const { error: deleteError } = await adminClient.auth.admin.deleteUser(
       pendingAuthUser.id,
     );
