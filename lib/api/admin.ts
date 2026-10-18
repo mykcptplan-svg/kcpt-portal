@@ -15,6 +15,8 @@ export type MemberListItem = {
   coach_review_enabled: boolean;
   role: "member";
   created_at: string;
+  /** Present for admin callers only; omitted for coaches. */
+  has_plan?: boolean;
 };
 
 export type ManageMemberBody = {
