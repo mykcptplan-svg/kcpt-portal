@@ -18,6 +18,7 @@ import {
   UtensilsIcon,
 } from "@/components/icons";
 import DesktopSiteBanner from "@/components/DesktopSiteBanner";
+import KcptHeartIcon from "@/components/KcptHeartIcon";
 import { useProfile } from "@/lib/context/ProfileContext";
 
 type NavItem = {
@@ -48,6 +49,13 @@ const baseNavItems: NavItem[] = [
     icon: <ProfileIcon className="h-5 w-5" />,
   },
 ];
+
+// Members only; shown as the second item, directly after Home.
+const kcptPlanItem: NavItem = {
+  label: "My KCPT Plan",
+  href: "/kcpt-plan",
+  icon: <KcptHeartIcon className="h-[18px] w-[18px]" />,
+};
 
 const measurementsItem: NavItem = {
   label: "Measurements",
@@ -162,9 +170,20 @@ export default function NavShell({ children }: { children: ReactNode }) {
     return extras;
   }, [loading, profile?.role]);
 
+  // Admins and coaches have no personal plan. Wait for the profile so the item
+  // never flashes for them.
+  const showKcptPlan = !loading && profile?.role === "member";
+  const primaryNavItems = useMemo(
+    () =>
+      showKcptPlan
+        ? [baseNavItems[0], kcptPlanItem, ...baseNavItems.slice(1)]
+        : baseNavItems,
+    [showKcptPlan],
+  );
+
   const navItems = useMemo(
-    () => [...baseNavItems, ...extraNavItems],
-    [extraNavItems],
+    () => [...primaryNavItems, ...extraNavItems],
+    [primaryNavItems, extraNavItems],
   );
 
   const moreActive =
@@ -313,7 +332,7 @@ export default function NavShell({ children }: { children: ReactNode }) {
         aria-hidden={keyboardOpen}
       >
         <div className="flex w-full max-w-[420px] gap-1 rounded-[20px] border border-border bg-card/92 p-2 shadow-[0_20px_40px_-16px_rgba(17,17,17,0.22)] backdrop-blur-md">
-          {baseNavItems.map((item) => {
+          {primaryNavItems.map((item) => {
             const active = isActive(item.href);
             return (
               <Link

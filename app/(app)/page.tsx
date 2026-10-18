@@ -5,6 +5,7 @@ import QuickAccessCard from "@/components/dashboard/QuickAccessCard";
 import MotivationalQuote from "@/components/dashboard/MotivationalQuote";
 import WeekOverviewCard from "@/components/dashboard/WeekOverviewCard";
 import HeartLoader from "@/components/HeartLoader";
+import KcptHeartIcon from "@/components/KcptHeartIcon";
 import { HistoryIcon, PlanIcon, RulerIcon, TrackerIcon } from "@/components/icons";
 import { getWeeklyBasePlan } from "@/lib/api/basePlan";
 import { listQuotes } from "@/lib/api/quotes";
@@ -153,6 +154,14 @@ export default function Home() {
           </div>
 
           <div className="grid gap-3 sm:grid-cols-2">
+            {profile?.role === "member" && (
+              <QuickAccessCard
+                title="My KCPT Plan"
+                description="Your personal plan from Kelly"
+                icon={<KcptHeartIcon className="h-[22px] w-[22px]" />}
+                href="/kcpt-plan"
+              />
+            )}
             <QuickAccessCard
               title="My Food Plan"
               description="Plan your week"

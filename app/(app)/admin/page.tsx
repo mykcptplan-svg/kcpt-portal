@@ -1,7 +1,9 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
 import HeartLoader from "@/components/HeartLoader";
+import PlanChip from "@/components/kcpt-plan/PlanChip";
 import { ChevronDownIcon, DownloadIcon, UsersIcon } from "@/components/icons";
 import {
   getMembersList,
@@ -575,6 +577,8 @@ export default function AdminPage() {
                     </span>
                   </span>
 
+                  {m.has_plan !== undefined && <PlanChip hasPlan={m.has_plan} />}
+
                   <div className="flex items-center gap-2">
                     <span className="text-[11px] font-bold uppercase tracking-wide text-muted">
                       Coach Review
@@ -599,6 +603,15 @@ export default function AdminPage() {
                       />
                     </button>
                   </div>
+
+                  {m.has_plan !== undefined && (
+                    <Link
+                      href={`/admin/members/${m.id}/plan`}
+                      className="text-xs font-bold tracking-wide text-brand-orange-dark"
+                    >
+                      Edit plan →
+                    </Link>
+                  )}
 
                   <button
                     type="button"
@@ -667,6 +680,11 @@ export default function AdminPage() {
                       <p className="truncate text-xs font-medium text-muted">
                         {m.email ?? "—"}
                       </p>
+                      {m.has_plan !== undefined && (
+                        <div className="mt-1.5">
+                          <PlanChip hasPlan={m.has_plan} />
+                        </div>
+                      )}
                     </div>
                   </div>
 
@@ -718,6 +736,7 @@ export default function AdminPage() {
                     />
                   </button>
 
+                  <div className="flex flex-wrap items-center gap-2">
                   <button
                     type="button"
                     onClick={() => void handleToggleStatus(m)}
@@ -740,6 +759,15 @@ export default function AdminPage() {
                       {active ? "Revoke" : "Grant"}
                     </span>
                   </button>
+                  {m.has_plan !== undefined && (
+                    <Link
+                      href={`/admin/members/${m.id}/plan`}
+                      className="text-xs font-bold tracking-wide text-brand-orange-dark"
+                    >
+                      Edit plan →
+                    </Link>
+                  )}
+                  </div>
                 </div>
               );
             })}
