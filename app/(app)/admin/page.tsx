@@ -180,15 +180,20 @@ export default function AdminPage() {
       await inviteMember(token, email);
       setInviteEmail("");
       setShowInviteForm(false);
-      await Promise.all([
-        refreshMembers(token),
-        refreshPendingInvites(token),
-      ]);
     } catch (err) {
       setInviteError(
         err instanceof Error ? err.message : "Unable to send invite.",
       );
     } finally {
+      // Refresh on success and on error so Members and On Hold stay correct.
+      try {
+        await Promise.all([
+          refreshMembers(token),
+          refreshPendingInvites(token),
+        ]);
+      } catch {
+        // Keep the invite error (if any); a failed refresh must not mask it.
+      }
       setInviting(false);
     }
   }
@@ -204,12 +209,20 @@ export default function AdminPage() {
     setActionError(null);
     try {
       await inviteMember(token, email);
-      await refreshPendingInvites(token);
     } catch (err) {
       setActionError(
         err instanceof Error ? err.message : "Unable to send invite.",
       );
     } finally {
+      // Refresh on success and on error so Members and On Hold stay correct.
+      try {
+        await Promise.all([
+          refreshMembers(token),
+          refreshPendingInvites(token),
+        ]);
+      } catch {
+        // Keep the resend error (if any); a failed refresh must not mask it.
+      }
       setResendingEmail(null);
     }
   }
@@ -838,16 +851,22 @@ export default function AdminPage() {
                             <p className="mt-2 text-[11px] font-bold tracking-wide text-muted">
                               {pendingStatusLabel(invite.status)}
                             </p>
-                            <button
-                              type="button"
-                              onClick={() => void handleResendInvite(invite.email)}
-                              disabled={busy || resendingEmail !== null}
-                              className="mt-3 w-full cursor-pointer rounded-[10px] border-[1.5px] border-border px-3 py-2.5 text-center transition-transform hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-60"
-                            >
-                              <span className="font-heading text-[13px] uppercase tracking-wide text-muted">
-                                {busy ? "Sending…" : "Resend"}
-                              </span>
-                            </button>
+                            {invite.status === "incomplete" ? (
+                              <p className="mt-3 text-xs font-medium leading-snug text-muted">
+                                Invite already opened. The member should finish setup from their invite email.
+                              </p>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => void handleResendInvite(invite.email)}
+                                disabled={busy || resendingEmail !== null}
+                                className="mt-3 w-full cursor-pointer rounded-[10px] border-[1.5px] border-border px-3 py-2.5 text-center transition-transform hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-60"
+                              >
+                                <span className="font-heading text-[13px] uppercase tracking-wide text-muted">
+                                  {busy ? "Sending…" : "Resend"}
+                                </span>
+                              </button>
+                            )}
                           </div>
                         );
                       })}
@@ -886,18 +905,24 @@ export default function AdminPage() {
                               <p className="text-[11px] font-bold tracking-wide text-muted">
                                 {pendingStatusLabel(invite.status)}
                               </p>
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  void handleResendInvite(invite.email)
-                                }
-                                disabled={busy || resendingEmail !== null}
-                                className="cursor-pointer rounded-[10px] border-[1.5px] border-border px-3 py-2.5 text-center transition-transform hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-60"
-                              >
-                                <span className="font-heading text-[13px] uppercase tracking-wide text-muted">
-                                  {busy ? "Sending…" : "Resend"}
-                                </span>
-                              </button>
+                              {invite.status === "incomplete" ? (
+                                <p className="text-xs font-medium leading-snug text-muted">
+                                  Invite already opened. The member should finish setup from their invite email.
+                                </p>
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    void handleResendInvite(invite.email)
+                                  }
+                                  disabled={busy || resendingEmail !== null}
+                                  className="cursor-pointer rounded-[10px] border-[1.5px] border-border px-3 py-2.5 text-center transition-transform hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-60"
+                                >
+                                  <span className="font-heading text-[13px] uppercase tracking-wide text-muted">
+                                    {busy ? "Sending…" : "Resend"}
+                                  </span>
+                                </button>
+                              )}
                             </div>
                           );
                         })}
