@@ -29,6 +29,24 @@ type MemberRow = {
   created_at: string;
 };
 
+// Content columns of member_plans (keep in sync with member-plan/index.ts).
+const PLAN_CONTENT_COLUMNS = [
+  "name",
+  "plan_calories",
+  "plan_protein",
+  "plan_steps",
+  "plan_workouts",
+  "plan_water",
+  "goal",
+  "food",
+  "steps",
+  "water",
+  "workouts",
+  "barriers",
+  "check_in",
+  "additional_guidance",
+] as const;
+
 function jsonResponse(body: Record<string, unknown>, status: number): Response {
   return new Response(JSON.stringify(body), {
     status,
@@ -122,7 +140,30 @@ Deno.serve(async (req: Request) => {
 
   if (callerProfile.role === "coach") {
     members = members.filter((m) => m.coach_review_enabled === true);
+    // Coaches have no access to member_plans: has_plan is omitted for them.
+    return jsonResponse({ data: members }, 200);
   }
 
-  return jsonResponse({ data: members }, 200);
+  // Admin only: has_plan is true when the member's plan has at least one
+  // non-null content field. One query, no per-member lookups.
+  const { data: planRows, error: planError } = await callerClient
+    .from("member_plans")
+    .select("user_id")
+    .or(PLAN_CONTENT_COLUMNS.map((c) => `${c}.not.is.null`).join(","));
+
+  if (planError) {
+    console.error("members-list: member_plans select failed", planError.code);
+    return jsonResponse({ error: "Unable to load members" }, 500);
+  }
+
+  const withPlan = new Set(
+    ((planRows ?? []) as { user_id: string }[]).map((r) => r.user_id),
+  );
+
+  return jsonResponse(
+    {
+      data: members.map((m) => ({ ...m, has_plan: withPlan.has(m.id) })),
+    },
+    200,
+  );
 });
