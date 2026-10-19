@@ -47,14 +47,14 @@ const SHORT_PLACEHOLDERS: Partial<Record<PlanFieldKey, string>> = {
 const YOUR_PLAN_KEYS: PlanFieldKey[] = [
   "plan_calories",
   "plan_protein",
+  "plan_water",
   "plan_steps",
   "plan_workouts",
-  "plan_water",
 ];
 const LONG_AFTER_PLAN_KEYS: PlanFieldKey[] = [
   "food",
-  "steps",
   "water",
+  "steps",
   "workouts",
   "barriers",
   "check_in",

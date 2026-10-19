@@ -46,12 +46,12 @@ export const PLAN_FIELDS: PlanFieldDef[] = [
   { key: "goal", label: "Goal", kind: "long" },
   { key: "plan_calories", label: "Calories", kind: "short" },
   { key: "plan_protein", label: "Protein", kind: "short" },
+  { key: "plan_water", label: "Water", kind: "short" },
   { key: "plan_steps", label: "Steps", kind: "short" },
   { key: "plan_workouts", label: "Workouts", kind: "short" },
-  { key: "plan_water", label: "Water", kind: "short" },
   { key: "food", label: "Food", kind: "long" },
-  { key: "steps", label: "Steps", kind: "long" },
   { key: "water", label: "Water", kind: "long" },
+  { key: "steps", label: "Steps", kind: "long" },
   { key: "workouts", label: "Workouts", kind: "long" },
   { key: "barriers", label: "Barriers", kind: "long" },
   { key: "check_in", label: "Check-In", kind: "long" },
@@ -64,16 +64,16 @@ export const PLAN_FIELD_KEYS: PlanFieldKey[] = PLAN_FIELDS.map((f) => f.key);
 export const YOUR_PLAN_ROWS: { key: PlanFieldKey; label: string }[] = [
   { key: "plan_calories", label: "Calories" },
   { key: "plan_protein", label: "Protein" },
+  { key: "plan_water", label: "Water" },
   { key: "plan_steps", label: "Steps" },
   { key: "plan_workouts", label: "Workouts" },
-  { key: "plan_water", label: "Water" },
 ];
 
 /** Read-only member page: text sections after "Your Plan", in display order. */
 export const TEXT_SECTIONS: { key: PlanFieldKey; title: string }[] = [
   { key: "food", title: "Food" },
-  { key: "steps", title: "Steps" },
   { key: "water", title: "Water" },
+  { key: "steps", title: "Steps" },
   { key: "workouts", title: "Workouts" },
   { key: "barriers", title: "Barriers" },
   { key: "check_in", title: "Check-In" },
