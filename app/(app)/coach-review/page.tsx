@@ -1,6 +1,9 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { Suspense, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import FocusEditor from "@/components/coach-review/FocusEditor";
+import PlanEditor from "@/components/coach-review/PlanEditor";
 import HeartLoader from "@/components/HeartLoader";
 import SectionDetail, {
   type HistorySectionKey,
@@ -20,6 +23,8 @@ import { getWeeksList, type WeekSummary } from "@/lib/api/history";
 import { getWeightMeasurement } from "@/lib/api/measurements";
 import { getMemberFocus } from "@/lib/api/memberFocus";
 import { getWeeklyTracker } from "@/lib/api/tracker";
+import PlanChip from "@/components/kcpt-plan/PlanChip";
+import { useProfile } from "@/lib/context/ProfileContext";
 import { countMealSlotsFilled } from "@/lib/planStats";
 import { createClient } from "@/lib/supabase/client";
 import {
@@ -115,13 +120,105 @@ function firstName(m: MemberListItem): string {
   return name.split(/\s+/)[0] ?? name;
 }
 
-export default function CoachReviewPage() {
-  const supabase = useMemo(() => createClient(), []);
+type CoachReviewTab = "weeks" | "plan" | "focus";
 
-  const [members, setMembers] = useState<MemberListItem[]>([]);
+export default function CoachReviewPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex flex-1 items-center justify-center px-6 py-10">
+          <HeartLoader size={192} />
+        </div>
+      }
+    >
+      <CoachReviewPageInner />
+    </Suspense>
+  );
+}
+
+function CoachReviewPageInner() {
+  const supabase = useMemo(() => createClient(), []);
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const { profile, loading: profileLoading } = useProfile();
+  // UI only: the KCPT Plan and Focus tabs, the toggle and the chips are for
+  // admins. The server (Edge Functions + RLS) is the real guard.
+  const isAdmin = profile?.role === "admin";
+
+  const [allMembers, setAllMembers] = useState<MemberListItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [selectedMemberId, setSelectedMemberId] = useState<string | null>(null);
+  // Admin-only "Show all members" toggle. OFF = members with Coach Review on.
+  const [showAllToggle, setShowAllToggle] = useState(false);
+  // Set by the Plan / Focus editors while they hold unsaved changes.
+  const [editorDirty, setEditorDirty] = useState(false);
+
+  // The URL is the source of truth for the selected member and tab:
+  // /coach-review?member=<id>&tab=weeks|plan|focus
+  const urlMemberId = searchParams.get("member");
+  const urlMember = urlMemberId
+    ? (allMembers.find((m) => m.id === urlMemberId) ?? null)
+    : null;
+  // A deep link to a member outside Coach Review shows the full list (admin).
+  const showAll =
+    isAdmin &&
+    (showAllToggle || (urlMember !== null && !urlMember.coach_review_enabled));
+  const members = useMemo(
+    () =>
+      showAll ? allMembers : allMembers.filter((m) => m.coach_review_enabled),
+    [allMembers, showAll],
+  );
+  const selectedMemberId =
+    members.find((m) => m.id === urlMemberId)?.id ?? members[0]?.id ?? null;
+  const tabParam = searchParams.get("tab");
+  const activeTab: CoachReviewTab =
+    isAdmin && (tabParam === "plan" || tabParam === "focus")
+      ? tabParam
+      : "weeks";
+
+  function go(memberId: string, tab: CoachReviewTab) {
+    router.replace(`${pathname}?member=${memberId}&tab=${tab}`, {
+      scroll: false,
+    });
+  }
+
+  function confirmLeave(): boolean {
+    return (
+      !editorDirty ||
+      window.confirm("You have unsaved changes. Leave without saving?")
+    );
+  }
+
+  function selectMember(memberId: string) {
+    if (memberId === selectedMemberId) return;
+    if (!confirmLeave()) return;
+    go(memberId, activeTab);
+  }
+
+  function selectTab(tab: CoachReviewTab) {
+    if (!selectedMemberId || tab === activeTab) return;
+    if (!confirmLeave()) return;
+    go(selectedMemberId, tab);
+  }
+
+  function toggleShowAll() {
+    const next = !showAll;
+    if (!next) {
+      // Turning it off must not leave a non-coached member selected.
+      const selected = allMembers.find((m) => m.id === selectedMemberId);
+      if (selected && !selected.coach_review_enabled) {
+        if (!confirmLeave()) return;
+        const firstCoached = allMembers.find((m) => m.coach_review_enabled);
+        if (firstCoached) {
+          go(firstCoached.id, "weeks");
+        } else {
+          router.replace(pathname, { scroll: false });
+        }
+      }
+    }
+    setShowAllToggle(next);
+  }
 
   const [weeks, setWeeks] = useState<WeekSummary[]>([]);
   const [weeksLoading, setWeeksLoading] = useState(false);
@@ -177,11 +274,7 @@ export default function CoachReviewPage() {
         const list = await getMembersList(session.access_token);
         if (cancelled) return;
 
-        const coached = list.filter((m) => m.coach_review_enabled);
-        setMembers(coached);
-        if (coached.length > 0) {
-          setSelectedMemberId(coached[0].id);
-        }
+        setAllMembers(list);
       } catch (err) {
         if (!cancelled) {
           setLoadError(
@@ -355,7 +448,7 @@ export default function CoachReviewPage() {
     });
   }
 
-  if (loading) {
+  if (loading || profileLoading) {
     return (
       <div className="flex flex-1 items-center justify-center px-6 py-10">
         <HeartLoader size={192} />
@@ -378,6 +471,18 @@ export default function CoachReviewPage() {
 
       {loadError && (
         <p className="text-xs text-brand-orange-dark">{loadError}</p>
+      )}
+
+      {isAdmin && !loadError && (
+        <label className="flex w-fit cursor-pointer items-center gap-2.5 text-[13px] font-semibold text-foreground">
+          <input
+            type="checkbox"
+            checked={showAll}
+            onChange={toggleShowAll}
+            className="h-4 w-4 cursor-pointer accent-[#FB933A]"
+          />
+          Show all members
+        </label>
       )}
 
       {!loadError && members.length === 0 && (
@@ -408,7 +513,7 @@ export default function CoachReviewPage() {
                 <button
                   key={m.id}
                   type="button"
-                  onClick={() => setSelectedMemberId(m.id)}
+                  onClick={() => selectMember(m.id)}
                   className={`flex shrink-0 cursor-pointer items-center gap-2.5 rounded-full py-2 pl-2 pr-3.5 ${
                     selected ? "" : "border border-border bg-card"
                   }`}
@@ -434,6 +539,9 @@ export default function CoachReviewPage() {
                   >
                     {firstName(m)}
                   </span>
+                  {isAdmin && m.has_plan !== undefined && (
+                    <PlanChip hasPlan={m.has_plan} />
+                  )}
                 </button>
               );
             })
@@ -452,7 +560,7 @@ export default function CoachReviewPage() {
                   <button
                     key={m.id}
                     type="button"
-                    onClick={() => setSelectedMemberId(m.id)}
+                    onClick={() => selectMember(m.id)}
                     className="flex cursor-pointer items-center gap-3 rounded-[14px] p-2.5 text-left"
                     style={{
                       background: selected
@@ -472,6 +580,11 @@ export default function CoachReviewPage() {
                       <p className="truncate text-xs font-medium text-muted">
                         {m.email ?? "—"}
                       </p>
+                      {isAdmin && m.has_plan !== undefined && (
+                        <div className="mt-1.5">
+                          <PlanChip hasPlan={m.has_plan} />
+                        </div>
+                      )}
                     </div>
                   </button>
                 );
@@ -499,23 +612,79 @@ export default function CoachReviewPage() {
                 </div>
               </div>
 
-              {weeksLoading && (
+              {isAdmin && (
+                <div
+                  role="tablist"
+                  aria-label="Member sections"
+                  className="flex flex-wrap gap-2"
+                >
+                  {(
+                    [
+                      ["weeks", "Weeks"],
+                      ["plan", "KCPT Plan"],
+                      ["focus", "Focus"],
+                    ] as const
+                  ).map(([key, label]) => {
+                    const selected = activeTab === key;
+                    return (
+                      <button
+                        key={key}
+                        type="button"
+                        role="tab"
+                        aria-selected={selected}
+                        onClick={() => selectTab(key)}
+                        className={`cursor-pointer rounded-full px-4 py-2 text-[12.5px] font-bold transition-colors ${
+                          selected
+                            ? "bg-brand-gradient text-white"
+                            : "border border-border bg-card text-muted"
+                        }`}
+                      >
+                        {label}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+
+              {isAdmin && activeTab === "plan" && (
+                <PlanEditor
+                  key={active.id}
+                  memberId={active.id}
+                  fullName={active.full_name}
+                  email={active.email}
+                  onDirtyChange={setEditorDirty}
+                />
+              )}
+
+              {isAdmin && activeTab === "focus" && (
+                <FocusEditor
+                  key={active.id}
+                  memberId={active.id}
+                  memberName={displayName(active)}
+                  onDirtyChange={setEditorDirty}
+                />
+              )}
+
+              {activeTab === "weeks" && weeksLoading && (
                 <div className="flex items-center justify-center rounded-[20px] border border-border bg-card py-12 shadow-[0_12px_26px_-18px_rgba(17,17,17,0.16)]">
                   <HeartLoader size={96} />
                 </div>
               )}
 
-              {weeksError && !weeksLoading && (
+              {activeTab === "weeks" && weeksError && !weeksLoading && (
                 <p className="text-xs text-brand-orange-dark">{weeksError}</p>
               )}
 
-              {!weeksLoading && !weeksError && weeks.length === 0 && (
+              {activeTab === "weeks" &&
+                !weeksLoading &&
+                !weeksError &&
+                weeks.length === 0 && (
                 <p className="text-sm text-muted">
                   No weeks logged yet for this member.
                 </p>
               )}
 
-              {!weeksLoading && weeks.length > 0 && (
+              {activeTab === "weeks" && !weeksLoading && weeks.length > 0 && (
                 <div className="flex flex-col gap-2.5">
                   {weeks.map((week) => {
                     const expanded = expandedWeekStart === week.week_start;
