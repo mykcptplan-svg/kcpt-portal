@@ -43,6 +43,7 @@ export type Lifestyle = {
 export type WeeklyTrackerEntry = {
   user_id: string;
   week_start: string;
+  /** Focus This Week snapshot: 0 to 5 points (older rows: 3 slots, some blank) */
   non_negotiables: string[];
   daily_metrics: DailyMetrics;
   sunday_reset_done: boolean;

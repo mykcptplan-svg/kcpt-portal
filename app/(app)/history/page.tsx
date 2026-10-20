@@ -17,6 +17,7 @@ import { getWeeklyBasePlan } from "@/lib/api/basePlan";
 import { exportWeekPdf } from "@/lib/api/exportPdf";
 import { getWeeksList, type WeekSummary } from "@/lib/api/history";
 import { getWeightMeasurement } from "@/lib/api/measurements";
+import { getMemberFocus } from "@/lib/api/memberFocus";
 import { getWeeklyTracker } from "@/lib/api/tracker";
 import { useProfile } from "@/lib/context/ProfileContext";
 import { buildMemberWeeksList } from "@/lib/historyWeeks";
@@ -28,6 +29,7 @@ import {
 } from "@/lib/trackerStats";
 import { formatWeekRange, getWeekStart } from "@/lib/week";
 import type {
+  MemberFocus,
   WeeklyBasePlan,
   WeeklyTrackerEntry,
   WeightMeasurement,
@@ -37,6 +39,7 @@ type WeekDetailCache = {
   plan: WeeklyBasePlan | null;
   tracker: WeeklyTrackerEntry | null;
   measurement: WeightMeasurement[];
+  focus: MemberFocus | null;
 };
 
 function latestMeasurement(
@@ -201,9 +204,12 @@ export default function HistoryPage() {
         const priorAlreadyCached =
           priorKey != null && priorKey in measurementByWeekRef.current;
 
-        const [plan, tracker, measurement, priorMeasurement] = await Promise.all([
+        const [plan, tracker, focus, measurement, priorMeasurement] = await Promise.all([
           getWeeklyBasePlan(weekStart, token).catch(() => null),
           getWeeklyTracker(weekStart, token).catch(() => null),
+          getMemberFocus(weekStart, token)
+            .then((r) => r.resolved)
+            .catch(() => null),
           getWeightMeasurement(weekStart, token).catch(() => []),
           priorWeek && !priorAlreadyCached
             ? getWeightMeasurement(priorWeek.week_start, token).catch(() => [])
@@ -218,7 +224,7 @@ export default function HistoryPage() {
 
         setDetailCache((prev) => ({
           ...prev,
-          [weekStart]: { plan, tracker, measurement },
+          [weekStart]: { plan, tracker, measurement, focus },
         }));
 
         setMeasurementByWeek((prev) => {
@@ -514,6 +520,7 @@ export default function HistoryPage() {
                                   sectionKey={section.key}
                                   plan={detail.plan}
                                   tracker={detail.tracker}
+                                  focus={detail.focus}
                                   measurement={detail.measurement ?? []}
                                 />
                               </div>

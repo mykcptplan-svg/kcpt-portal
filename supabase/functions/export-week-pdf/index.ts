@@ -105,7 +105,7 @@ function formatWeekRange(weekStart: string): string {
 function coerceNonNegotiables(raw: unknown): string[] {
   const names = ["", "", ""];
   if (!Array.isArray(raw)) return names;
-  for (let i = 0; i < 3; i++) {
+  for (let i = 0; i < Math.min(5, raw.length); i++) {
     const item = raw[i];
     if (typeof item === "string") names[i] = item;
     else if (
@@ -270,7 +270,26 @@ Deno.serve(async (req: Request) => {
     ? measurementRes.data
     : []) as Record<string, unknown>[];
 
-  const nonNegotiables = coerceNonNegotiables(trackerRow?.habits);
+  // Focus This Week: the member_focus row in force for this week, falling back
+  // to the week's own habits (older weeks). A failure here never blocks the PDF.
+  let nonNegotiables = coerceNonNegotiables(trackerRow?.habits);
+  {
+    const { data: focusRow, error: focusError } = await callerClient
+      .from("member_focus")
+      .select("items")
+      .eq("user_id", user.id)
+      .lte("effective_week", weekStart)
+      .order("effective_week", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (focusError) {
+      console.error("export-week-pdf: focus select failed", focusError.code);
+    } else if (focusRow && Array.isArray(focusRow.items)) {
+      nonNegotiables = (focusRow.items as unknown[]).filter(
+        (s): s is string => typeof s === "string",
+      );
+    }
+  }
   const wins = coerceString3(trackerRow?.wins);
   const nextWeekFocus = coerceString3(trackerRow?.next_week_focus);
   const metrics = (trackerRow?.daily_metrics ?? null) as Record<
@@ -751,30 +770,40 @@ Deno.serve(async (req: Request) => {
     // --- Non-Negotiables ---
     drawSectionTitle("Focus This Week");
     {
-      const labels = nonNegotiables.map((s) => s.trim());
+      const labels = nonNegotiables
+        .map((s) => s.trim())
+        .filter((s) => s.length > 0);
       const cols = 3;
       const gap = 10;
       const cardW = (contentW - gap * (cols - 1)) / cols;
       const cardH = 36;
       const radius = 14;
-      ensureSpace(cardH + 8);
-      for (let i = 0; i < 3; i++) {
-        const x = contentX + i * (cardW + gap);
-        const bottom = y - cardH;
-        drawRoundedRect(x, bottom, cardW, cardH, radius, CARD_FILL);
-        const label = labels[i] || "-";
-        const empty = !labels[i];
-        const size = fitCellSize(label, cardW - 16, font, 9.5);
-        const tw = font.widthOfTextAtSize(label, size);
-        page.drawText(label, {
-          x: x + (cardW - tw) / 2,
-          y: bottom + (cardH - size) / 2 + 1,
-          size,
-          font,
-          color: empty ? MUTED : DARK,
-        });
+      // At least 3 cards (empty ones show "-"), up to 5 focus points.
+      const slots = Math.max(3, labels.length);
+      const cardRows = Math.ceil(slots / cols);
+      for (let r = 0; r < cardRows; r++) {
+        ensureSpace(cardH + 8);
+        for (let c = 0; c < cols; c++) {
+          const i = r * cols + c;
+          if (i >= slots) break;
+          const x = contentX + c * (cardW + gap);
+          const bottom = y - cardH;
+          drawRoundedRect(x, bottom, cardW, cardH, radius, CARD_FILL);
+          const label = labels[i] || "-";
+          const empty = !labels[i];
+          const size = fitCellSize(label, cardW - 16, font, 9.5);
+          const tw = font.widthOfTextAtSize(label, size);
+          page.drawText(label, {
+            x: x + (cardW - tw) / 2,
+            y: bottom + (cardH - size) / 2 + 1,
+            size,
+            font,
+            color: empty ? MUTED : DARK,
+          });
+        }
+        y -= cardH;
+        if (r < cardRows - 1) y -= 8;
       }
-      y -= cardH;
     }
     endSectionRail();
 

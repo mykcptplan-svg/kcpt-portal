@@ -18,6 +18,7 @@ import {
 import { getWeeklyBasePlan } from "@/lib/api/basePlan";
 import { getWeeksList, type WeekSummary } from "@/lib/api/history";
 import { getWeightMeasurement } from "@/lib/api/measurements";
+import { getMemberFocus } from "@/lib/api/memberFocus";
 import { getWeeklyTracker } from "@/lib/api/tracker";
 import { countMealSlotsFilled } from "@/lib/planStats";
 import { createClient } from "@/lib/supabase/client";
@@ -27,6 +28,7 @@ import {
 } from "@/lib/trackerStats";
 import { formatWeekRange } from "@/lib/week";
 import type {
+  MemberFocus,
   WeeklyBasePlan,
   WeeklyTrackerEntry,
   WeightMeasurement,
@@ -36,6 +38,7 @@ type WeekDetailCache = {
   plan: WeeklyBasePlan | null;
   tracker: WeeklyTrackerEntry | null;
   measurement: WeightMeasurement[];
+  focus: MemberFocus | null;
 };
 
 function latestMeasurement(
@@ -272,10 +275,13 @@ export default function CoachReviewPage() {
         const priorAlreadyCached =
           priorKey != null && priorKey in measurementByWeekRef.current;
 
-        const [plan, tracker, measurement, priorMeasurement] =
+        const [plan, tracker, focus, measurement, priorMeasurement] =
           await Promise.all([
             getWeeklyBasePlan(weekStart, token, memberId).catch(() => null),
             getWeeklyTracker(weekStart, token, memberId).catch(() => null),
+            getMemberFocus(weekStart, token, memberId)
+              .then((r) => r.resolved)
+              .catch(() => null),
             getWeightMeasurement(weekStart, token, memberId).catch(
               () => [],
             ),
@@ -296,7 +302,7 @@ export default function CoachReviewPage() {
 
         setDetailCache((prev) => ({
           ...prev,
-          [weekStart]: { plan, tracker, measurement },
+          [weekStart]: { plan, tracker, measurement, focus },
         }));
 
         setMeasurementByWeek((prev) => {
@@ -654,6 +660,7 @@ export default function CoachReviewPage() {
                                             sectionKey={section.key}
                                             plan={detail.plan}
                                             tracker={detail.tracker}
+                                            focus={detail.focus}
                                             measurement={detail.measurement ?? []}
                                           />
                                         </div>

@@ -50,8 +50,8 @@ function isUuid(value: string): boolean {
 
 /** Returns an error message if invalid, otherwise null. */
 function validateNonNegotiables(value: unknown): string | null {
-  if (!Array.isArray(value) || value.length !== 3) {
-    return "non_negotiables must be an array of exactly 3 strings";
+  if (!Array.isArray(value) || value.length > 5) {
+    return "non_negotiables must be an array of 0 to 5 strings";
   }
   for (let i = 0; i < value.length; i++) {
     if (typeof value[i] !== "string") {
@@ -79,9 +79,10 @@ function validateString3(value: unknown, field: string): string | null {
 
 /** Coerce legacy habits objects or string[] into exactly 3 name strings. */
 function coerceNonNegotiables(raw: unknown): string[] {
+  // Always at least 3 slots (older clients expect that), up to 5 for focus points.
   const names = ["", "", ""];
   if (!Array.isArray(raw)) return names;
-  for (let i = 0; i < 3; i++) {
+  for (let i = 0; i < Math.min(5, raw.length); i++) {
     const item = raw[i];
     if (typeof item === "string") {
       names[i] = item;
