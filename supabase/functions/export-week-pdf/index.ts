@@ -277,6 +277,10 @@ Deno.serve(async (req: Request) => {
     string,
     unknown
   > | null;
+  const lifestyle = (trackerRow?.lifestyle ?? null) as Record<
+    string,
+    unknown
+  > | null;
 
   try {
     const pdfDoc = await PDFDocument.create();
@@ -745,7 +749,7 @@ Deno.serve(async (req: Request) => {
     endSectionRail();
 
     // --- Non-Negotiables ---
-    drawSectionTitle("Non-Negotiables");
+    drawSectionTitle("Focus This Week");
     {
       const labels = nonNegotiables.map((s) => s.trim());
       const cols = 3;
@@ -916,6 +920,88 @@ Deno.serve(async (req: Request) => {
         }
         y -= rowH - 5;
       }
+
+      // --- Lifestyle & Recovery (optional): Sleep numbers + Alcohol ticks ---
+      ensureSpace(rowH * 3 + 12);
+      y -= 6;
+      page.drawText("LIFESTYLE & RECOVERY", {
+        x: contentX,
+        y,
+        size: 8,
+        font: fontBold,
+        color: MUTED,
+      });
+      y -= rowH - 4;
+
+      const lifestyleRows = [
+        { key: "sleep", label: "Sleep (h)" },
+        { key: "alcohol", label: "Alcohol" },
+      ] as const;
+      for (let li = 0; li < lifestyleRows.length; li++) {
+        const row = lifestyleRows[li];
+        ensureSpace(rowH + 6);
+        page.drawText(row.label, {
+          x: contentX,
+          y,
+          size: 9,
+          font: fontBold,
+          color: DARK,
+        });
+        const series = lifestyle?.[row.key];
+        for (let i = 0; i < 7; i++) {
+          const raw = Array.isArray(series) ? series[i] : null;
+          if (row.key === "alcohol") {
+            if (raw === true) {
+              drawCheckmark(dayCenter(i), y);
+            } else {
+              drawCenterCell("-", dayCenter(i), dayColW, 9, false, MUTED);
+            }
+          } else {
+            const text = formatCell(raw);
+            drawCenterCell(
+              text,
+              dayCenter(i),
+              dayColW,
+              9,
+              false,
+              text === "-" ? MUTED : DARK,
+            );
+          }
+        }
+        let rowAvg = "-";
+        let rowAvgMuted = true;
+        if (row.key === "alcohol") {
+          const count = Array.isArray(series)
+            ? series.filter((v) => v === true).length
+            : 0;
+          rowAvg = count + "/7";
+          rowAvgMuted = false;
+        } else {
+          const avg = avgNumbers(series);
+          if (avg != null) {
+            rowAvgMuted = false;
+            rowAvg = avg.toFixed(1);
+          }
+        }
+        drawCenterCell(
+          rowAvg,
+          avgCenter,
+          avgColW,
+          9,
+          true,
+          rowAvgMuted ? MUTED : ORANGE_DARK,
+        );
+        y -= 5;
+        if (li < lifestyleRows.length - 1) {
+          page.drawLine({
+            start: { x: contentX, y },
+            end: { x: contentX + contentW, y },
+            thickness: 0.5,
+            color: RULE,
+          });
+        }
+        y -= rowH - 5;
+      }
     }
     endSectionRail();
 
@@ -952,7 +1038,7 @@ Deno.serve(async (req: Request) => {
     } else {
       leftLines.push({ kind: "sub", text: "WINS" });
       pushItems(winList);
-      leftLines.push({ kind: "sub", text: "NEXT WEEK FOCUS" });
+      leftLines.push({ kind: "sub", text: "FOCUS FOR NEXT WEEK" });
       pushItems(focusList);
     }
 

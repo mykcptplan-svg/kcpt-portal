@@ -2,16 +2,22 @@
 
 import { useEffect, useRef, useState } from "react";
 
-export type PillarEntryMetric = "calories" | "protein" | "water" | "steps";
+export type PillarEntryMetric =
+  | "calories"
+  | "protein"
+  | "water"
+  | "steps"
+  | "sleep";
 
 const METRIC_META: Record<
   PillarEntryMetric,
-  { title: string; unit: string | null; step?: string }
+  { title: string; unit: string | null; step?: string; max?: string }
 > = {
   calories: { title: "Calories", unit: "kcal" },
   protein: { title: "Protein", unit: "g" },
   water: { title: "Water", unit: "L", step: "0.1" },
   steps: { title: "Steps", unit: null },
+  sleep: { title: "Sleep", unit: "h", step: "0.5", max: "24" },
 };
 
 export default function PillarEntrySheet({
@@ -126,6 +132,7 @@ export default function PillarEntrySheet({
             type="number"
             inputMode="decimal"
             min={0}
+            max={meta.max}
             step={meta.step}
             value={inputValue}
             onChange={(e) => onNumberChange(e.target.value)}

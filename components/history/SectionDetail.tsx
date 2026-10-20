@@ -142,6 +142,9 @@ function TrackerDetail({ tracker }: { tracker: WeeklyTrackerEntry | null }) {
   const metrics = tracker.daily_metrics;
   const workoutDays =
     metrics.workout?.filter((v) => v === true).length ?? 0;
+  const sleepValues: (number | null)[] = tracker.lifestyle?.sleep ?? [];
+  const alcoholDays =
+    tracker.lifestyle?.alcohol?.filter((v) => v === true).length ?? 0;
   const wins = (tracker.wins ?? [])
     .map((n) => n.trim())
     .filter((n) => n.length > 0);
@@ -155,7 +158,7 @@ function TrackerDetail({ tracker }: { tracker: WeeklyTrackerEntry | null }) {
       {nonNegotiables.length > 0 && (
         <>
           <p className="mb-2 text-[11px] font-bold uppercase tracking-wide text-muted">
-            Non-Negotiables
+            Focus This Week
           </p>
           <ul className="mb-4 flex flex-col gap-1">
             {nonNegotiables.map((name, i) => (
@@ -193,6 +196,22 @@ function TrackerDetail({ tracker }: { tracker: WeeklyTrackerEntry | null }) {
         <StatChip label="Workout" value={`${workoutDays}/7`} unit="days" />
       </div>
 
+      {(sleepValues.some((v) => v != null) || alcoholDays > 0) && (
+        <>
+          <p className="mb-2 text-[11px] font-bold uppercase tracking-wide text-muted">
+            Lifestyle &amp; Recovery
+          </p>
+          <div className="mb-4 grid grid-cols-2 gap-2.5 sm:grid-cols-3">
+            <StatChip
+              label="Avg Sleep"
+              value={formatAverage(sleepValues, 1)}
+              unit="h"
+            />
+            <StatChip label="Alcohol" value={`${alcoholDays}/7`} unit="days" />
+          </div>
+        </>
+      )}
+
       <p className="mb-2 text-[11px] font-bold uppercase tracking-wide text-muted">
         Sunday Reset
       </p>
@@ -216,7 +235,7 @@ function TrackerDetail({ tracker }: { tracker: WeeklyTrackerEntry | null }) {
           {nextWeekFocus.length > 0 && (
             <div>
               <p className="mb-1 text-[12px] font-bold text-muted">
-                Next week focus
+                Focus for next week
               </p>
               <ul className="flex flex-col gap-1">
                 {nextWeekFocus.map((item, i) => (

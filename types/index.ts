@@ -32,6 +32,14 @@ export type DailyMetrics = {
   workout: (boolean | null)[];
 };
 
+/** Lifestyle & Recovery; each array is length 7: Mon…Sun (null = unset) */
+export type Lifestyle = {
+  /** Hours slept, 0 to 24 in 0.5 steps */
+  sleep: (number | null)[];
+  /** true = had alcohol */
+  alcohol: (true | null)[];
+};
+
 export type WeeklyTrackerEntry = {
   user_id: string;
   week_start: string;
@@ -42,6 +50,8 @@ export type WeeklyTrackerEntry = {
   wins: string[];
   /** Length 3 — Sunday Reset next-week focus (reflective; not linked to non_negotiables) */
   next_week_focus: string[];
+  /** Optional on write (omitted = leave stored value). GET always returns it. */
+  lifestyle?: Lifestyle;
 };
 
 export type WeightMeasurement = {
