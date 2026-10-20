@@ -54,6 +54,26 @@ export type WeeklyTrackerEntry = {
   lifestyle?: Lifestyle;
 };
 
+/** One dated Focus This Week row. Focus for week W = greatest effective_week <= W. */
+export type MemberFocus = {
+  user_id: string;
+  /** Monday (YYYY-MM-DD) the focus starts applying */
+  effective_week: string;
+  /** 0 to 5 trimmed strings, 1 to 120 characters each (members write at most 3) */
+  items: string[];
+  /** Who wrote it: derived by the server from the caller's role */
+  source: "member" | "admin";
+  updated_at: string;
+  updated_by: string;
+};
+
+export type MemberFocusResponse = {
+  /** Row in force for the requested week, or null */
+  resolved: MemberFocus | null;
+  /** 8 most recent rows, newest effective_week first */
+  history: MemberFocus[];
+};
+
 export type WeightMeasurement = {
   user_id: string;
   week_start: string;
