@@ -134,5 +134,23 @@ Deno.serve(async (req: Request) => {
     return jsonResponse({ error: "Unable to discard draft" }, 500);
   }
 
+  // The member's own next-week Focus (written from the Sunday Reset). RLS only
+  // allows deleting source = 'member' rows for next Monday; source is also
+  // filtered here so admin-written rows are never touched.
+  const { error: focusDeleteError } = await callerClient
+    .from("member_focus")
+    .delete()
+    .eq("user_id", user.id)
+    .eq("effective_week", nextWeekStart)
+    .eq("source", "member");
+
+  if (focusDeleteError) {
+    console.error(
+      "discard-next-week-draft: focus delete failed",
+      focusDeleteError.code,
+    );
+    return jsonResponse({ error: "Unable to discard draft" }, 500);
+  }
+
   return jsonResponse({ success: true, week_start: nextWeekStart }, 200);
 });

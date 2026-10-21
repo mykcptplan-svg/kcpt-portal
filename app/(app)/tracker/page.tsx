@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, Suspense, useEffect, useMemo, useState } from "react";
+import { Fragment, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import AutosaveStatus from "@/components/AutosaveStatus";
@@ -15,6 +15,7 @@ import PillarEntrySheet, {
   type PillarEntryMetric,
 } from "@/components/tracker/PillarEntrySheet";
 import PillarInfoButton from "@/components/tracker/PillarInfoButton";
+import { getMemberFocus, saveMemberFocus } from "@/lib/api/memberFocus";
 import { discardNextWeekDraft } from "@/lib/api/nextWeekDraft";
 import { getWeeklyTracker, saveWeeklyTracker } from "@/lib/api/tracker";
 import { useProfile } from "@/lib/context/ProfileContext";
@@ -23,8 +24,8 @@ import { useDebouncedSave } from "@/lib/hooks/useDebouncedSave";
 import { useWeekParam } from "@/lib/hooks/useWeekParam";
 import { createClient } from "@/lib/supabase/client";
 import { formatPillarCellValue, inferStepsMode, isUniformSteps } from "@/lib/trackerStats";
-import { getNextWeekStart } from "@/lib/week";
-import type { DailyMetrics } from "@/types";
+import { getNextWeekStart, getWeekStart } from "@/lib/week";
+import type { DailyMetrics, Lifestyle } from "@/types";
 
 const DAY_LABELS = ["M", "T", "W", "T", "F", "S", "S"];
 const DAY_NAMES = [
@@ -35,12 +36,6 @@ const DAY_NAMES = [
   "Friday",
   "Saturday",
   "Sunday",
-] as const;
-
-const HABIT_PLACEHOLDERS = [
-  "In bed by 11pm",
-  "No alcohol weekdays",
-  "10k steps",
 ] as const;
 
 const NUMERIC_PILLAR_ROWS: {
@@ -60,6 +55,8 @@ const PILLAR_INFO = {
   steps:
     "Enter your total steps for each day, or switch to Weekly total and enter one total for the whole week.",
   workout: "Please tick the box if you completed a workout on this day.",
+  sleep: "Enter the hours you slept the night before, in steps of half an hour. Optional.",
+  alcohol: "Tick the box on days you had alcohol. No counting needed. Optional.",
 } as const;
 
 function emptyMetrics(): DailyMetrics {
@@ -69,6 +66,42 @@ function emptyMetrics(): DailyMetrics {
     water: Array(7).fill(null) as (number | null)[],
     steps: Array(7).fill(null) as (number | null)[],
     workout: Array(7).fill(null) as (boolean | null)[],
+  };
+}
+
+function emptyLifestyle(): Lifestyle {
+  return {
+    sleep: Array(7).fill(null) as (number | null)[],
+    alcohol: Array(7).fill(null) as (true | null)[],
+  };
+}
+
+/** Load-path normalizer: older rows store {} so every cell defaults to null. */
+function normalizeLifestyle(raw: unknown): Lifestyle {
+  const out = emptyLifestyle();
+  if (raw === null || typeof raw !== "object" || Array.isArray(raw)) return out;
+  const obj = raw as Record<string, unknown>;
+  if (Array.isArray(obj.sleep)) {
+    for (let i = 0; i < 7; i++) {
+      const v = obj.sleep[i];
+      if (typeof v === "number" && Number.isFinite(v)) out.sleep[i] = v;
+    }
+  }
+  if (Array.isArray(obj.alcohol)) {
+    for (let i = 0; i < 7; i++) {
+      if (obj.alcohol[i] === true) out.alcohol[i] = true;
+    }
+  }
+  return out;
+}
+
+/** Save-path: the server accepts 0 to 24 in 0.5 steps, so snap before sending. */
+function sanitizeLifestyle(value: Lifestyle): Lifestyle {
+  return {
+    sleep: value.sleep.map((v) =>
+      v == null ? null : Math.min(24, Math.max(0, Math.round(v * 2) / 2)),
+    ),
+    alcohol: value.alcohol,
   };
 }
 
@@ -143,8 +176,32 @@ function TrackerPageInner() {
   const { profile } = useProfile();
   const isRevoked = profile?.status === "revoked";
 
-  const [nonNegotiables, setNonNegotiables] = useState<string[]>(["", "", ""]);
+  // Focus This Week, read from member_focus (display only). Falls back to the
+  // week's own saved habits when nothing resolves. These items are also what
+  // gets written back to weekly_tracker_entries.habits (backward compatible).
+  const [focusItems, setFocusItems] = useState<string[]>([]);
+  const [focusSource, setFocusSource] = useState<"member" | "admin" | null>(
+    null,
+  );
+  // Sunday Reset focus <-> member_focus, current week only:
+  //  "legacy"   other weeks, or the focus call failed: plain tracker text only
+  //  "edit"     member edits up to 3 points; written to member_focus on change
+  //  "readonly" coach set more than 3 points; shown read-only, never written
+  const [nextFocusMode, setNextFocusMode] = useState<
+    "legacy" | "edit" | "readonly"
+  >("legacy");
+  const [nextFocusSource, setNextFocusSource] = useState<
+    "member" | "admin" | null
+  >(null);
+  const [nextFocusReadOnlyItems, setNextFocusReadOnlyItems] = useState<
+    string[]
+  >([]);
+  const focusModeRef = useRef<"legacy" | "edit" | "readonly">("legacy");
+  // Items as first shown / last written; a PUT happens only when they differ.
+  const focusBaselineRef = useRef<string[]>([]);
+  const focusDirtyRef = useRef(false);
   const [dailyMetrics, setDailyMetrics] = useState<DailyMetrics>(emptyMetrics);
+  const [lifestyle, setLifestyle] = useState<Lifestyle>(emptyLifestyle);
   const [wins, setWins] = useState<string[]>(["", "", ""]);
   const [nextWeekFocus, setNextWeekFocus] = useState<string[]>(["", "", ""]);
   const [loading, setLoading] = useState(true);
@@ -183,29 +240,76 @@ function TrackerPageInner() {
           return;
         }
 
-        const tracker = await getWeeklyTracker(weekStart, session.access_token);
+        const token = session.access_token;
+        const isCurrentWeek = weekStart === getWeekStart();
+        // A failed focus call never blocks the tracker: it falls back to the
+        // week's own habits and turns member_focus writes off.
+        const [tracker, focusRes, nextFocusRes] = await Promise.all([
+          getWeeklyTracker(weekStart, token),
+          getMemberFocus(weekStart, token).catch(() => null),
+          isCurrentWeek
+            ? getMemberFocus(nextWeekStart, token).catch(() => null)
+            : Promise.resolve(null),
+        ]);
         if (cancelled) return;
 
+        const habits = (tracker?.non_negotiables ?? [])
+          .map((s) => s.trim())
+          .filter((s) => s.length > 0);
+        const resolved = focusRes?.resolved ?? null;
+        setFocusItems(resolved ? resolved.items : habits);
+        setFocusSource(resolved ? resolved.source : null);
+
+        // Sunday Reset focus: start from the focus resolved for NEXT week.
+        const legacyRaw = tracker?.next_week_focus ?? [];
+        const legacySlots = [0, 1, 2].map((i) => legacyRaw[i] ?? "");
+        const legacyItems = legacyRaw
+          .map((s) => s.trim())
+          .filter((s) => s.length > 0);
+        focusDirtyRef.current = false;
+        let mode: "legacy" | "edit" | "readonly" = "legacy";
+        if (isCurrentWeek && nextFocusRes) {
+          const nextResolved = nextFocusRes.resolved;
+          const hasRowForNext = nextResolved?.effective_week === nextWeekStart;
+          // A saved next_week_focus text is kept unless a row already exists
+          // for next week, so nothing a member typed earlier is hidden.
+          const fromTable = hasRowForNext || legacyItems.length === 0;
+          const initial = fromTable
+            ? (nextResolved?.items ?? [])
+            : legacyItems;
+          const readOnly = fromTable && initial.length > 3;
+          mode = readOnly ? "readonly" : "edit";
+          focusBaselineRef.current = initial;
+          setNextFocusSource(fromTable && nextResolved ? nextResolved.source : null);
+          setNextFocusReadOnlyItems(readOnly ? initial : []);
+          setNextWeekFocus(
+            readOnly ? legacySlots : [0, 1, 2].map((i) => initial[i] ?? ""),
+          );
+        } else {
+          focusBaselineRef.current = [];
+          setNextFocusSource(null);
+          setNextFocusReadOnlyItems([]);
+          setNextWeekFocus(legacySlots);
+        }
+        focusModeRef.current = mode;
+        setNextFocusMode(mode);
+
         if (!tracker) {
-          setNonNegotiables(["", "", ""]);
           setDailyMetrics(emptyMetrics());
+          setLifestyle(emptyLifestyle());
           setWins(["", "", ""]);
-          setNextWeekFocus(["", "", ""]);
           setStepsMode("daily");
           setStepsModeConfirming(false);
           return;
         }
 
-        const names = tracker.non_negotiables ?? [];
-        setNonNegotiables([0, 1, 2].map((i) => names[i] ?? ""));
         const metrics = normalizeDailyMetrics(tracker.daily_metrics);
         setDailyMetrics(metrics);
+        setLifestyle(normalizeLifestyle(tracker.lifestyle));
         setStepsMode(inferStepsMode(metrics.steps));
         setStepsModeConfirming(false);
         const winList = tracker.wins ?? [];
         setWins([0, 1, 2].map((i) => winList[i] ?? ""));
-        const focusList = tracker.next_week_focus ?? [];
-        setNextWeekFocus([0, 1, 2].map((i) => focusList[i] ?? ""));
       } catch (err) {
         if (!cancelled) {
           setLoadError(err instanceof Error ? err.message : "Unable to load tracker.");
@@ -219,7 +323,7 @@ function TrackerPageInner() {
     return () => {
       cancelled = true;
     };
-  }, [supabase, weekStart]);
+  }, [supabase, weekStart, nextWeekStart]);
 
   // Independent of the main tracker load above: check whether a next-week
   // draft exists at all, so the WeekToggle knows whether to render. Skipped
@@ -393,9 +497,30 @@ function TrackerPageInner() {
     });
   }
 
+  function setSleepCell(dayIdx: number, raw: string) {
+    setLifestyle((prev) => {
+      const nextRow = prev.sleep.slice();
+      if (raw.trim() === "") {
+        nextRow[dayIdx] = null;
+      } else {
+        const n = Number(raw);
+        nextRow[dayIdx] = Number.isFinite(n) ? n : null;
+      }
+      return { ...prev, sleep: nextRow };
+    });
+  }
+
+  function toggleAlcohol(dayIdx: number) {
+    setLifestyle((prev) => {
+      const nextRow = prev.alcohol.slice();
+      nextRow[dayIdx] = nextRow[dayIdx] === true ? null : true;
+      return { ...prev, alcohol: nextRow };
+    });
+  }
+
   const draft = useMemo(
-    () => ({ nonNegotiables, dailyMetrics, wins, nextWeekFocus }),
-    [nonNegotiables, dailyMetrics, wins, nextWeekFocus],
+    () => ({ focusItems, dailyMetrics, lifestyle, wins, nextWeekFocus }),
+    [focusItems, dailyMetrics, lifestyle, wins, nextWeekFocus],
   );
 
   const { status, error: saveError } = useDebouncedSave(
@@ -409,14 +534,34 @@ function TrackerPageInner() {
       await saveWeeklyTracker(
         {
           week_start: weekStart,
-          non_negotiables: value.nonNegotiables,
+          non_negotiables: value.focusItems,
           daily_metrics: value.dailyMetrics,
+          lifestyle: sanitizeLifestyle(value.lifestyle),
           sunday_reset_done: hasResetContent,
           wins: value.wins,
           next_week_focus: value.nextWeekFocus,
         },
         accessToken,
       );
+
+      // member_focus is written ONLY when the member changed the focus fields
+      // and the points differ from what was first shown / last written.
+      if (focusModeRef.current === "edit" && focusDirtyRef.current) {
+        const items = value.nextWeekFocus
+          .map((s) => s.trim())
+          .filter((s) => s.length > 0);
+        const baseline = focusBaselineRef.current;
+        const unchanged =
+          items.length === baseline.length &&
+          items.every((s, i) => s === baseline[i]);
+        if (!unchanged) {
+          await saveMemberFocus(accessToken, {
+            effective_week: nextWeekStart,
+            items,
+          });
+          focusBaselineRef.current = items;
+        }
+      }
     },
     { skip: loading },
   );
@@ -477,30 +622,40 @@ function TrackerPageInner() {
             <CheckIcon className="h-3.5 w-3.5" />
           </span>
           <h2 className="font-heading text-base uppercase tracking-wide text-foreground">
-            My Non-Negotiables
+            My Focus This Week
           </h2>
         </div>
-        <div className="flex flex-col gap-2.5">
-          {nonNegotiables.map((name, i) => (
-            <input
-              key={i}
-              type="text"
-              value={name}
-              onChange={(e) => {
-                const next = nonNegotiables.slice();
-                next[i] = e.target.value;
-                setNonNegotiables(next);
-              }}
-              placeholder={HABIT_PLACEHOLDERS[i]}
-              maxLength={40}
-              disabled={isRevoked}
-              className="w-full rounded-[10px] border border-border bg-background px-3 py-2 text-[13.5px] text-foreground outline-none focus:border-brand-orange disabled:cursor-not-allowed disabled:opacity-60"
-            />
-          ))}
-        </div>
+        {focusItems.length > 0 ? (
+          <ol className="flex flex-col gap-2.5">
+            {focusItems.map((item, i) => (
+              <li
+                key={i}
+                className="flex items-start gap-2 rounded-[10px] border border-border bg-background px-3 py-2 text-[13.5px] font-semibold text-foreground"
+              >
+                <span className="w-5 shrink-0 text-[12px] font-bold text-muted">
+                  {i + 1}.
+                </span>
+                <span className="min-w-0 [overflow-wrap:anywhere]">{item}</span>
+              </li>
+            ))}
+          </ol>
+        ) : (
+          /* REVIEW COPY: empty state of the Focus card */
+          <p className="text-[13px] font-medium leading-snug text-muted">
+            No focus set yet. You can choose your focus for next week in the
+            Sunday Reset below.
+          </p>
+        )}
+        {focusItems.length > 0 && focusSource === "admin" && (
+          /* REVIEW COPY: attribution when the coach wrote the focus */
+          <p className="mt-2 text-[12px] font-semibold text-brand-orange-dark">
+            Set by your coach
+          </p>
+        )}
         <p className="mt-2 text-[12px] font-medium leading-snug text-muted">
-          These are your own personal non-negotiables. Choose three habits
-          you&apos;ll commit to this week.
+          These are the habits you&apos;re focusing on this week. Keep them
+          simple, realistic and achievable. Small actions repeated
+          consistently lead to big results.
         </p>
       </section>
 
@@ -749,6 +904,70 @@ function TrackerPageInner() {
               </div>
             );
           })}
+
+          {/* Lifestyle & Recovery (optional): Sleep numbers + Alcohol ticks */}
+          <div className="col-span-8 mt-3 border-t border-border pt-4">
+            <h3 className="font-heading text-sm uppercase tracking-wide text-foreground">
+              Lifestyle &amp; Recovery
+            </h3>
+          </div>
+
+          <div className="flex w-full items-center justify-between gap-1 pr-1.5 text-xs font-bold leading-tight text-foreground">
+            <span>Sleep (hours)</span>
+            <PillarInfoButton label="Sleep" text={PILLAR_INFO.sleep} />
+          </div>
+          {lifestyle.sleep.map((value, dayIdx) => {
+            const filled = value != null;
+            const isActive =
+              activeCell?.metric === "sleep" && activeCell.dayIdx === dayIdx;
+            return (
+              <div key={`sleep-${dayIdx}`} className="flex justify-center">
+                <button
+                  type="button"
+                  onClick={() => setActiveCell({ metric: "sleep", dayIdx })}
+                  aria-label={`Sleep (hours), ${DAY_LABELS[dayIdx]}`}
+                  disabled={isRevoked}
+                  className={`flex h-[34px] w-full min-w-0 max-w-[68px] items-center justify-center rounded-lg text-[11px] font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
+                    isRevoked ? "" : "cursor-pointer"
+                  } ${
+                    filled
+                      ? "bg-brand-gradient text-white"
+                      : "border border-foreground/25 bg-background text-muted"
+                  } ${isActive ? "ring-2 ring-brand-orange ring-offset-1 ring-offset-card" : ""}`}
+                >
+                  {typeof value === "number" ? String(value) : "–"}
+                </button>
+              </div>
+            );
+          })}
+
+          <div className="flex w-full items-center justify-between gap-1 pr-1.5 text-xs font-bold leading-tight text-foreground">
+            <span>Alcohol</span>
+            <PillarInfoButton label="Alcohol" text={PILLAR_INFO.alcohol} />
+          </div>
+          {lifestyle.alcohol.map((value, dayIdx) => {
+            const checked = value === true;
+            return (
+              <div key={`alcohol-${dayIdx}`} className="flex justify-center py-0.5">
+                <button
+                  type="button"
+                  onClick={() => toggleAlcohol(dayIdx)}
+                  aria-pressed={checked}
+                  aria-label={`Alcohol, ${DAY_LABELS[dayIdx]}`}
+                  disabled={isRevoked}
+                  className={`flex h-[34px] w-full min-w-0 max-w-[48px] items-center justify-center rounded-lg transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
+                    isRevoked ? "" : "cursor-pointer"
+                  } ${
+                    checked
+                      ? "bg-brand-gradient"
+                      : "border border-foreground/25 bg-background"
+                  }`}
+                >
+                  {checked && <CheckIcon className="h-3.5 w-3.5 text-white" />}
+                </button>
+              </div>
+            );
+          })}
         </div>
       </section>
 
@@ -759,13 +978,17 @@ function TrackerPageInner() {
           value={
             activeCell.metric === "calories"
               ? dailyMetrics.calories[activeCell.dayIdx]
-              : dailyMetrics[activeCell.metric][activeCell.dayIdx]
+              : activeCell.metric === "sleep"
+                ? lifestyle.sleep[activeCell.dayIdx]
+                : dailyMetrics[activeCell.metric][activeCell.dayIdx]
           }
           disabled={isRevoked}
           onClose={() => setActiveCell(null)}
           onNumberChange={(raw) => {
             if (activeCell.metric === "calories") {
               setCalorieNumber(activeCell.dayIdx, raw);
+            } else if (activeCell.metric === "sleep") {
+              setSleepCell(activeCell.dayIdx, raw);
             } else {
               setNumericCell(activeCell.metric, activeCell.dayIdx, raw);
             }
@@ -831,16 +1054,39 @@ function TrackerPageInner() {
 
         <div className="mb-4">
           <p className="mb-2 text-[13.5px] font-bold leading-snug text-foreground">
-            💪 What do I need to work on next week?
+            💪 What is my focus for next week?
           </p>
           <p className="mb-3 text-[12.5px] font-semibold leading-relaxed text-muted">
-            Choose up to 3 non-negotiables that will make next week a success.
-            Keep them simple, realistic and within your control. Small,
-            consistent actions lead to big results.
+            Think about what went well this week and what you&apos;d like to
+            improve. Choose up to 3 things to focus on next week. Keep them
+            simple, realistic and within your control.
           </p>
           <p className="mb-2 text-[11px] font-bold uppercase tracking-wide text-muted">
-            My 3 non-negotiables:
+            My focus for next week
           </p>
+          {nextFocusMode === "readonly" ? (
+            <div>
+              <ol className="flex flex-col gap-2">
+                {nextFocusReadOnlyItems.map((item, i) => (
+                  <li
+                    key={i}
+                    className="flex items-start gap-2 rounded-[10px] border border-border bg-background px-3 py-2 text-[13.5px] font-semibold text-foreground"
+                  >
+                    <span className="w-5 shrink-0 text-[12px] font-bold text-muted">
+                      {i + 1}.
+                    </span>
+                    <span className="min-w-0 [overflow-wrap:anywhere]">
+                      {item}
+                    </span>
+                  </li>
+                ))}
+              </ol>
+              {/* REVIEW COPY: read-only note when the coach set more than 3 points */}
+              <p className="mt-2 text-[12px] font-semibold text-brand-orange-dark">
+                Your coach set this focus, so it can&apos;t be changed here.
+              </p>
+            </div>
+          ) : (
           <div className="flex flex-col gap-2">
             {nextWeekFocus.map((item, i) => (
               <div key={`focus-${i}`} className="flex items-center gap-2">
@@ -853,18 +1099,26 @@ function TrackerPageInner() {
                   onChange={(e) => {
                     const next = nextWeekFocus.slice();
                     next[i] = e.target.value;
+                    focusDirtyRef.current = true;
                     setNextWeekFocus(next);
                   }}
                   placeholder={
                     i === 0 ? "e.g. Prep lunches on Sunday" : "Optional"
                   }
-                  maxLength={80}
+                  maxLength={120}
                   disabled={isRevoked}
                   className="w-full rounded-[10px] border border-border bg-background px-3 py-2 text-[13.5px] text-foreground outline-none focus:border-brand-orange disabled:cursor-not-allowed disabled:opacity-60"
                 />
               </div>
             ))}
           </div>
+          )}
+          {nextFocusMode === "edit" && nextFocusSource === "admin" && (
+            /* REVIEW COPY: note when the starting focus was set by the coach */
+            <p className="mt-2 text-[12px] font-semibold text-brand-orange-dark">
+              Set by your coach. You can change it here.
+            </p>
+          )}
         </div>
 
         {!isPastWeek && (

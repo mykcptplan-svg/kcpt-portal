@@ -2,7 +2,12 @@ import {
   averageCaloriesMetric,
   averageDailyMetric,
 } from "@/lib/trackerStats";
-import type { WeeklyBasePlan, WeeklyTrackerEntry, WeightMeasurement } from "@/types";
+import type {
+  MemberFocus,
+  WeeklyBasePlan,
+  WeeklyTrackerEntry,
+  WeightMeasurement,
+} from "@/types";
 
 const APPROACH_LABELS: Record<string, string> = {
   orange_base: "Orange Base",
@@ -133,15 +138,28 @@ function formatCaloriesAverage(values: (number | true | null)[]): string {
   return Math.round(avg).toLocaleString();
 }
 
-function TrackerDetail({ tracker }: { tracker: WeeklyTrackerEntry | null }) {
+function TrackerDetail({
+  tracker,
+  focus,
+}: {
+  tracker: WeeklyTrackerEntry | null;
+  focus?: MemberFocus | null;
+}) {
   if (!tracker) return <EmptyState />;
 
-  const nonNegotiables = (tracker.non_negotiables ?? [])
-    .map((n) => n.trim())
-    .filter((n) => n.length > 0);
+  // Focus resolved for this week (member_focus); older weeks with no resolved
+  // row fall back to the week's own saved habits.
+  const nonNegotiables = focus
+    ? focus.items.map((n) => n.trim()).filter((n) => n.length > 0)
+    : (tracker.non_negotiables ?? [])
+        .map((n) => n.trim())
+        .filter((n) => n.length > 0);
   const metrics = tracker.daily_metrics;
   const workoutDays =
     metrics.workout?.filter((v) => v === true).length ?? 0;
+  const sleepValues: (number | null)[] = tracker.lifestyle?.sleep ?? [];
+  const alcoholDays =
+    tracker.lifestyle?.alcohol?.filter((v) => v === true).length ?? 0;
   const wins = (tracker.wins ?? [])
     .map((n) => n.trim())
     .filter((n) => n.length > 0);
@@ -155,7 +173,7 @@ function TrackerDetail({ tracker }: { tracker: WeeklyTrackerEntry | null }) {
       {nonNegotiables.length > 0 && (
         <>
           <p className="mb-2 text-[11px] font-bold uppercase tracking-wide text-muted">
-            Non-Negotiables
+            Focus This Week{focus?.source === "admin" ? " (set by coach)" : ""}
           </p>
           <ul className="mb-4 flex flex-col gap-1">
             {nonNegotiables.map((name, i) => (
@@ -193,6 +211,22 @@ function TrackerDetail({ tracker }: { tracker: WeeklyTrackerEntry | null }) {
         <StatChip label="Workout" value={`${workoutDays}/7`} unit="days" />
       </div>
 
+      {(sleepValues.some((v) => v != null) || alcoholDays > 0) && (
+        <>
+          <p className="mb-2 text-[11px] font-bold uppercase tracking-wide text-muted">
+            Lifestyle &amp; Recovery
+          </p>
+          <div className="mb-4 grid grid-cols-2 gap-2.5 sm:grid-cols-3">
+            <StatChip
+              label="Avg Sleep"
+              value={formatAverage(sleepValues, 1)}
+              unit="h"
+            />
+            <StatChip label="Alcohol" value={`${alcoholDays}/7`} unit="days" />
+          </div>
+        </>
+      )}
+
       <p className="mb-2 text-[11px] font-bold uppercase tracking-wide text-muted">
         Sunday Reset
       </p>
@@ -216,7 +250,7 @@ function TrackerDetail({ tracker }: { tracker: WeeklyTrackerEntry | null }) {
           {nextWeekFocus.length > 0 && (
             <div>
               <p className="mb-1 text-[12px] font-bold text-muted">
-                Next week focus
+                Focus for next week
               </p>
               <ul className="flex flex-col gap-1">
                 {nextWeekFocus.map((item, i) => (
@@ -316,6 +350,8 @@ type SectionDetailProps = {
   plan: WeeklyBasePlan | null;
   tracker: WeeklyTrackerEntry | null;
   measurement: WeightMeasurement[];
+  /** Focus resolved for the displayed week (optional). */
+  focus?: MemberFocus | null;
 };
 
 export default function SectionDetail({
@@ -323,8 +359,9 @@ export default function SectionDetail({
   plan,
   tracker,
   measurement,
+  focus,
 }: SectionDetailProps) {
   if (sectionKey === "food") return <FoodPlanDetail plan={plan} />;
-  if (sectionKey === "tracker") return <TrackerDetail tracker={tracker} />;
+  if (sectionKey === "tracker") return <TrackerDetail tracker={tracker} focus={focus} />;
   return <MeasurementsDetail measurement={measurement} />;
 }

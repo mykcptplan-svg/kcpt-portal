@@ -105,7 +105,7 @@ function formatWeekRange(weekStart: string): string {
 function coerceNonNegotiables(raw: unknown): string[] {
   const names = ["", "", ""];
   if (!Array.isArray(raw)) return names;
-  for (let i = 0; i < 3; i++) {
+  for (let i = 0; i < Math.min(5, raw.length); i++) {
     const item = raw[i];
     if (typeof item === "string") names[i] = item;
     else if (
@@ -270,10 +270,33 @@ Deno.serve(async (req: Request) => {
     ? measurementRes.data
     : []) as Record<string, unknown>[];
 
-  const nonNegotiables = coerceNonNegotiables(trackerRow?.habits);
+  // Focus This Week: the member_focus row in force for this week, falling back
+  // to the week's own habits (older weeks). A failure here never blocks the PDF.
+  let nonNegotiables = coerceNonNegotiables(trackerRow?.habits);
+  {
+    const { data: focusRow, error: focusError } = await callerClient
+      .from("member_focus")
+      .select("items")
+      .eq("user_id", user.id)
+      .lte("effective_week", weekStart)
+      .order("effective_week", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (focusError) {
+      console.error("export-week-pdf: focus select failed", focusError.code);
+    } else if (focusRow && Array.isArray(focusRow.items)) {
+      nonNegotiables = (focusRow.items as unknown[]).filter(
+        (s): s is string => typeof s === "string",
+      );
+    }
+  }
   const wins = coerceString3(trackerRow?.wins);
   const nextWeekFocus = coerceString3(trackerRow?.next_week_focus);
   const metrics = (trackerRow?.daily_metrics ?? null) as Record<
+    string,
+    unknown
+  > | null;
+  const lifestyle = (trackerRow?.lifestyle ?? null) as Record<
     string,
     unknown
   > | null;
@@ -745,32 +768,42 @@ Deno.serve(async (req: Request) => {
     endSectionRail();
 
     // --- Non-Negotiables ---
-    drawSectionTitle("Non-Negotiables");
+    drawSectionTitle("Focus This Week");
     {
-      const labels = nonNegotiables.map((s) => s.trim());
+      const labels = nonNegotiables
+        .map((s) => s.trim())
+        .filter((s) => s.length > 0);
       const cols = 3;
       const gap = 10;
       const cardW = (contentW - gap * (cols - 1)) / cols;
       const cardH = 36;
       const radius = 14;
-      ensureSpace(cardH + 8);
-      for (let i = 0; i < 3; i++) {
-        const x = contentX + i * (cardW + gap);
-        const bottom = y - cardH;
-        drawRoundedRect(x, bottom, cardW, cardH, radius, CARD_FILL);
-        const label = labels[i] || "-";
-        const empty = !labels[i];
-        const size = fitCellSize(label, cardW - 16, font, 9.5);
-        const tw = font.widthOfTextAtSize(label, size);
-        page.drawText(label, {
-          x: x + (cardW - tw) / 2,
-          y: bottom + (cardH - size) / 2 + 1,
-          size,
-          font,
-          color: empty ? MUTED : DARK,
-        });
+      // At least 3 cards (empty ones show "-"), up to 5 focus points.
+      const slots = Math.max(3, labels.length);
+      const cardRows = Math.ceil(slots / cols);
+      for (let r = 0; r < cardRows; r++) {
+        ensureSpace(cardH + 8);
+        for (let c = 0; c < cols; c++) {
+          const i = r * cols + c;
+          if (i >= slots) break;
+          const x = contentX + c * (cardW + gap);
+          const bottom = y - cardH;
+          drawRoundedRect(x, bottom, cardW, cardH, radius, CARD_FILL);
+          const label = labels[i] || "-";
+          const empty = !labels[i];
+          const size = fitCellSize(label, cardW - 16, font, 9.5);
+          const tw = font.widthOfTextAtSize(label, size);
+          page.drawText(label, {
+            x: x + (cardW - tw) / 2,
+            y: bottom + (cardH - size) / 2 + 1,
+            size,
+            font,
+            color: empty ? MUTED : DARK,
+          });
+        }
+        y -= cardH;
+        if (r < cardRows - 1) y -= 8;
       }
-      y -= cardH;
     }
     endSectionRail();
 
@@ -916,6 +949,88 @@ Deno.serve(async (req: Request) => {
         }
         y -= rowH - 5;
       }
+
+      // --- Lifestyle & Recovery (optional): Sleep numbers + Alcohol ticks ---
+      ensureSpace(rowH * 3 + 12);
+      y -= 6;
+      page.drawText("LIFESTYLE & RECOVERY", {
+        x: contentX,
+        y,
+        size: 8,
+        font: fontBold,
+        color: MUTED,
+      });
+      y -= rowH - 4;
+
+      const lifestyleRows = [
+        { key: "sleep", label: "Sleep (h)" },
+        { key: "alcohol", label: "Alcohol" },
+      ] as const;
+      for (let li = 0; li < lifestyleRows.length; li++) {
+        const row = lifestyleRows[li];
+        ensureSpace(rowH + 6);
+        page.drawText(row.label, {
+          x: contentX,
+          y,
+          size: 9,
+          font: fontBold,
+          color: DARK,
+        });
+        const series = lifestyle?.[row.key];
+        for (let i = 0; i < 7; i++) {
+          const raw = Array.isArray(series) ? series[i] : null;
+          if (row.key === "alcohol") {
+            if (raw === true) {
+              drawCheckmark(dayCenter(i), y);
+            } else {
+              drawCenterCell("-", dayCenter(i), dayColW, 9, false, MUTED);
+            }
+          } else {
+            const text = formatCell(raw);
+            drawCenterCell(
+              text,
+              dayCenter(i),
+              dayColW,
+              9,
+              false,
+              text === "-" ? MUTED : DARK,
+            );
+          }
+        }
+        let rowAvg = "-";
+        let rowAvgMuted = true;
+        if (row.key === "alcohol") {
+          const count = Array.isArray(series)
+            ? series.filter((v) => v === true).length
+            : 0;
+          rowAvg = count + "/7";
+          rowAvgMuted = false;
+        } else {
+          const avg = avgNumbers(series);
+          if (avg != null) {
+            rowAvgMuted = false;
+            rowAvg = avg.toFixed(1);
+          }
+        }
+        drawCenterCell(
+          rowAvg,
+          avgCenter,
+          avgColW,
+          9,
+          true,
+          rowAvgMuted ? MUTED : ORANGE_DARK,
+        );
+        y -= 5;
+        if (li < lifestyleRows.length - 1) {
+          page.drawLine({
+            start: { x: contentX, y },
+            end: { x: contentX + contentW, y },
+            thickness: 0.5,
+            color: RULE,
+          });
+        }
+        y -= rowH - 5;
+      }
     }
     endSectionRail();
 
@@ -952,7 +1067,7 @@ Deno.serve(async (req: Request) => {
     } else {
       leftLines.push({ kind: "sub", text: "WINS" });
       pushItems(winList);
-      leftLines.push({ kind: "sub", text: "NEXT WEEK FOCUS" });
+      leftLines.push({ kind: "sub", text: "FOCUS FOR NEXT WEEK" });
       pushItems(focusList);
     }
 

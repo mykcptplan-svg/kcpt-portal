@@ -50,8 +50,8 @@ function isUuid(value: string): boolean {
 
 /** Returns an error message if invalid, otherwise null. */
 function validateNonNegotiables(value: unknown): string | null {
-  if (!Array.isArray(value) || value.length !== 3) {
-    return "non_negotiables must be an array of exactly 3 strings";
+  if (!Array.isArray(value) || value.length > 5) {
+    return "non_negotiables must be an array of 0 to 5 strings";
   }
   for (let i = 0; i < value.length; i++) {
     if (typeof value[i] !== "string") {
@@ -79,9 +79,10 @@ function validateString3(value: unknown, field: string): string | null {
 
 /** Coerce legacy habits objects or string[] into exactly 3 name strings. */
 function coerceNonNegotiables(raw: unknown): string[] {
+  // Always at least 3 slots (older clients expect that), up to 5 for focus points.
   const names = ["", "", ""];
   if (!Array.isArray(raw)) return names;
-  for (let i = 0; i < 3; i++) {
+  for (let i = 0; i < Math.min(5, raw.length); i++) {
     const item = raw[i];
     if (typeof item === "string") {
       names[i] = item;
@@ -175,13 +176,84 @@ function validateDailyMetrics(metrics: unknown): string | null {
   return null;
 }
 
+/**
+ * Lifestyle & Recovery: { sleep: (number|null)[7], alcohol: (true|null)[7] }.
+ * Sleep is 0 to 24 hours in 0.5 steps. Alcohol is true (had alcohol) or null.
+ * Returns an error message if invalid, otherwise null.
+ */
+function validateLifestyle(value: unknown): string | null {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    return "lifestyle must be an object";
+  }
+  const obj = value as Record<string, unknown>;
+  const keys = Object.keys(obj);
+  if (
+    keys.length !== 2 ||
+    !keys.includes("sleep") ||
+    !keys.includes("alcohol")
+  ) {
+    return "lifestyle must have exactly keys: sleep, alcohol";
+  }
+
+  for (const key of ["sleep", "alcohol"] as const) {
+    const cells = obj[key];
+    if (!Array.isArray(cells) || cells.length !== 7) {
+      return `lifestyle.${key} must be an array of exactly 7 elements`;
+    }
+    for (let i = 0; i < 7; i++) {
+      const cell = cells[i];
+      if (cell === null) continue;
+      if (key === "alcohol") {
+        if (cell !== true) {
+          return `lifestyle.alcohol[${i}] must be null or true`;
+        }
+      } else if (
+        typeof cell !== "number" ||
+        !Number.isFinite(cell) ||
+        cell < 0 ||
+        cell > 24 ||
+        !Number.isInteger(cell * 2)
+      ) {
+        return `lifestyle.sleep[${i}] must be null or a number from 0 to 24 in steps of 0.5`;
+      }
+    }
+  }
+  return null;
+}
+
+/** Normalise stored lifestyle jsonb ({} for older rows) to the 7-length shape. */
+function coerceLifestyle(raw: unknown): {
+  sleep: (number | null)[];
+  alcohol: (true | null)[];
+} {
+  const out = {
+    sleep: Array(7).fill(null) as (number | null)[],
+    alcohol: Array(7).fill(null) as (true | null)[],
+  };
+  if (raw === null || typeof raw !== "object" || Array.isArray(raw)) return out;
+  const obj = raw as Record<string, unknown>;
+  if (Array.isArray(obj.sleep)) {
+    for (let i = 0; i < 7; i++) {
+      const v = obj.sleep[i];
+      if (typeof v === "number" && Number.isFinite(v)) out.sleep[i] = v;
+    }
+  }
+  if (Array.isArray(obj.alcohol)) {
+    for (let i = 0; i < 7; i++) {
+      if (obj.alcohol[i] === true) out.alcohol[i] = true;
+    }
+  }
+  return out;
+}
+
 function mapTrackerRow(
   row: Record<string, unknown> | null,
 ): Record<string, unknown> | null {
   if (row === null) return null;
-  const { habits, wins, next_week_focus, ...rest } = row;
+  const { habits, wins, next_week_focus, lifestyle, ...rest } = row;
   return {
     ...rest,
+    lifestyle: coerceLifestyle(lifestyle),
     non_negotiables: coerceNonNegotiables(habits),
     wins: coerceString3(wins),
     next_week_focus: coerceString3(next_week_focus),
@@ -333,6 +405,16 @@ Deno.serve(async (req: Request) => {
     return jsonResponse({ error: focusError }, 400);
   }
 
+  // lifestyle is optional: only validated and written when the client sends it,
+  // so older clients that omit it never overwrite stored values.
+  const hasLifestyle = Object.prototype.hasOwnProperty.call(record, "lifestyle");
+  if (hasLifestyle) {
+    const lifestyleError = validateLifestyle(record.lifestyle);
+    if (lifestyleError) {
+      return jsonResponse({ error: lifestyleError }, 400);
+    }
+  }
+
   const week_start = record.week_start;
   const non_negotiables = record.non_negotiables;
   const daily_metrics = record.daily_metrics;
@@ -351,6 +433,7 @@ Deno.serve(async (req: Request) => {
         sunday_reset_done,
         wins,
         next_week_focus,
+        ...(hasLifestyle ? { lifestyle: record.lifestyle } : {}),
       },
       { onConflict: "user_id,week_start" },
     );
