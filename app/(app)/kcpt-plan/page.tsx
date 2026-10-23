@@ -6,13 +6,12 @@ import { useRouter, useSearchParams } from "next/navigation";
 import HeartLoader from "@/components/HeartLoader";
 import KcptHeartIcon from "@/components/KcptHeartIcon";
 import PlanCard, { PlanText } from "@/components/kcpt-plan/PlanCard";
-import { getMembersList } from "@/lib/api/admin";
+import { getMembersList, type MemberListItem } from "@/lib/api/admin";
 import { getMemberPlan, type MemberPlan } from "@/lib/api/memberPlan";
 import { useProfile } from "@/lib/context/ProfileContext";
 import {
   hasText,
   isPlanEmpty,
-  isUuid,
   KCPT_QUESTIONNAIRE_URL,
   TEXT_SECTIONS,
   YOUR_PLAN_ROWS,
@@ -58,29 +57,61 @@ function KcptPlanPageInner() {
   const isRevoked = profile?.status === "revoked";
   const isMember = role === "member";
 
-  // Read-only preview: only an admin may pass ?member=<uuid>. It is ignored for
-  // members (they always see their own plan) and for coaches (redirected).
+  // Admins have no plan of their own: they pick a member and see that member's
+  // plan read-only. ?member=<uuid> is ignored for members (they always see
+  // their own plan) and for coaches (redirected).
   const memberParam = searchParams.get("member");
+  const [adminMembers, setAdminMembers] = useState<MemberListItem[] | null>(
+    null,
+  );
+  const [membersError, setMembersError] = useState<string | null>(null);
+  // Selected member: a ?member value that exists in the list, else the first.
   const previewId =
-    role === "admin" &&
-    !isRevoked &&
-    memberParam !== null &&
-    isUuid(memberParam)
-      ? memberParam
+    role === "admin" && !isRevoked && adminMembers && adminMembers.length > 0
+      ? (adminMembers.find((m) => m.id === memberParam)?.id ??
+        adminMembers[0].id)
       : null;
-  const [previewLabel, setPreviewLabel] = useState<string | null>(null);
+  const previewMember = adminMembers?.find((m) => m.id === previewId) ?? null;
+  const previewLabel = previewMember
+    ? previewMember.full_name.trim() || previewMember.email || null
+    : null;
 
   const [state, setState] = useState<LoadState>({ kind: "loading" });
   const [reloadKey, setReloadKey] = useState(0);
 
-  // Admins and coaches have no personal plan: send them to their members list
-  // (an admin previewing a member with ?member=<uuid> stays on this page).
+  // Coaches have no personal plan: send them to Coach Review.
   useEffect(() => {
     if (profileLoading || !profile) return;
-    if (role === "admin") {
-      if (!previewId) router.replace("/admin");
-    } else if (role === "coach") router.replace("/coach-review");
-  }, [profileLoading, profile, role, previewId, router]);
+    if (role === "coach") router.replace("/coach-review");
+  }, [profileLoading, profile, role, router]);
+
+  // Admin: the member list for the picker.
+  useEffect(() => {
+    if (profileLoading || role !== "admin" || isRevoked) return;
+
+    let cancelled = false;
+
+    async function loadMembers() {
+      try {
+        const {
+          data: { session },
+        } = await supabase.auth.getSession();
+        if (!session) {
+          if (!cancelled) setMembersError("Not logged in.");
+          return;
+        }
+        const list = await getMembersList(session.access_token);
+        if (!cancelled) setAdminMembers(list);
+      } catch (err) {
+        if (!cancelled) setMembersError(describeError(err));
+      }
+    }
+
+    void loadMembers();
+    return () => {
+      cancelled = true;
+    };
+  }, [supabase, profileLoading, role, isRevoked]);
 
   useEffect(() => {
     // A revoked member never triggers a fetch.
@@ -103,15 +134,10 @@ function KcptPlanPageInner() {
           return;
         }
         if (previewId) {
-          // Admin preview of another member's plan. `cancelled` guards against
-          // a stale response from a previous ?member= value.
-          const [previewPlan, members] = await Promise.all([
-            getMemberPlan(session.access_token, previewId),
-            getMembersList(session.access_token).catch(() => []),
-          ]);
+          // Admin preview of the selected member's plan. `cancelled` guards
+          // against a stale response from a previously selected member.
+          const previewPlan = await getMemberPlan(session.access_token, previewId);
           if (cancelled) return;
-          const m = members.find((x) => x.id === previewId);
-          setPreviewLabel(m ? m.full_name.trim() || m.email || null : null);
           setState({ kind: "ready", plan: previewPlan });
           return;
         }
@@ -144,7 +170,7 @@ function KcptPlanPageInner() {
     );
   }
 
-  if (!isMember && previewId === null) return <PageLoader />;
+  if (!isMember && role !== "admin") return <PageLoader />;
 
   const heading = (
     <h1 className="font-heading text-[34px] uppercase leading-none tracking-wide text-foreground">
@@ -154,6 +180,31 @@ function KcptPlanPageInner() {
 
   const shell =
     "flex flex-1 flex-col gap-4 px-5 py-6 md:mx-auto md:w-full md:max-w-3xl md:px-10 md:py-10";
+
+  // Admin only: member picker. Null for members, so their page is unchanged.
+  const adminPicker =
+    adminMembers && previewId ? (
+      <label className="flex flex-col gap-1.5">
+        <span className="text-[11px] font-bold uppercase tracking-wide text-muted">
+          Member
+        </span>
+        <select
+          value={previewId}
+          onChange={(e) =>
+            router.replace(`/kcpt-plan?member=${e.target.value}`, {
+              scroll: false,
+            })
+          }
+          className="w-full cursor-pointer rounded-[10px] border border-border bg-card px-[13px] py-3 text-[14px] font-semibold text-foreground outline-none focus:border-brand-orange"
+        >
+          {adminMembers.map((m) => (
+            <option key={m.id} value={m.id}>
+              {m.full_name.trim() || m.email || m.id}
+            </option>
+          ))}
+        </select>
+      </label>
+    ) : null;
 
   // Shown only in admin preview. Null for members, so their page is unchanged.
   const previewBanner = previewId ? (
@@ -197,11 +248,43 @@ function KcptPlanPageInner() {
     );
   }
 
-  if (state.kind === "loading") return <PageLoader />;
+  if (role === "admin") {
+    if (membersError) {
+      return (
+        <div className={shell}>
+          {heading}
+          <p className="text-sm text-brand-orange-dark" role="alert">
+            {membersError}
+          </p>
+        </div>
+      );
+    }
+    if (adminMembers === null) return <PageLoader />;
+    if (adminMembers.length === 0) {
+      return (
+        <div className={shell}>
+          {heading}
+          <p className="text-sm text-muted">No members yet.</p>
+        </div>
+      );
+    }
+  }
+
+  if (state.kind === "loading") {
+    if (!adminPicker) return <PageLoader />;
+    // Admin switching members: keep the picker on screen while the plan loads.
+    return (
+      <div className={shell}>
+        {adminPicker}
+        <PageLoader />
+      </div>
+    );
+  }
 
   if (state.kind === "error") {
     return (
       <div className={shell}>
+        {adminPicker}
         {previewBanner}
         {heading}
         <div
@@ -228,6 +311,7 @@ function KcptPlanPageInner() {
   if (isPlanEmpty(plan)) {
     return (
       <div className={shell}>
+        {adminPicker}
         {previewBanner}
         {heading}
         <section className="mt-2 flex flex-col items-center gap-4 rounded-[20px] border border-border bg-card px-6 py-9 text-center shadow-[0_12px_26px_-18px_rgba(17,17,17,0.16)]">
@@ -264,6 +348,7 @@ function KcptPlanPageInner() {
 
   return (
     <div className={shell}>
+      {adminPicker}
       {previewBanner}
       {heading}
 
