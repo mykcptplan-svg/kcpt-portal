@@ -1,15 +1,18 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
+import { Suspense, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
 import HeartLoader from "@/components/HeartLoader";
 import KcptHeartIcon from "@/components/KcptHeartIcon";
 import PlanCard, { PlanText } from "@/components/kcpt-plan/PlanCard";
+import { getMembersList } from "@/lib/api/admin";
 import { getMemberPlan, type MemberPlan } from "@/lib/api/memberPlan";
 import { useProfile } from "@/lib/context/ProfileContext";
 import {
   hasText,
   isPlanEmpty,
+  isUuid,
   KCPT_QUESTIONNAIRE_URL,
   TEXT_SECTIONS,
   YOUR_PLAN_ROWS,
@@ -38,7 +41,16 @@ function PageLoader() {
 }
 
 export default function KcptPlanPage() {
+  return (
+    <Suspense fallback={<PageLoader />}>
+      <KcptPlanPageInner />
+    </Suspense>
+  );
+}
+
+function KcptPlanPageInner() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const supabase = useMemo(() => createClient(), []);
   const { profile, loading: profileLoading } = useProfile();
 
@@ -46,19 +58,35 @@ export default function KcptPlanPage() {
   const isRevoked = profile?.status === "revoked";
   const isMember = role === "member";
 
+  // Read-only preview: only an admin may pass ?member=<uuid>. It is ignored for
+  // members (they always see their own plan) and for coaches (redirected).
+  const memberParam = searchParams.get("member");
+  const previewId =
+    role === "admin" &&
+    !isRevoked &&
+    memberParam !== null &&
+    isUuid(memberParam)
+      ? memberParam
+      : null;
+  const [previewLabel, setPreviewLabel] = useState<string | null>(null);
+
   const [state, setState] = useState<LoadState>({ kind: "loading" });
   const [reloadKey, setReloadKey] = useState(0);
 
-  // Admins and coaches have no personal plan: send them to their members list.
+  // Admins and coaches have no personal plan: send them to their members list
+  // (an admin previewing a member with ?member=<uuid> stays on this page).
   useEffect(() => {
     if (profileLoading || !profile) return;
-    if (role === "admin") router.replace("/admin");
-    else if (role === "coach") router.replace("/coach-review");
-  }, [profileLoading, profile, role, router]);
+    if (role === "admin") {
+      if (!previewId) router.replace("/admin");
+    } else if (role === "coach") router.replace("/coach-review");
+  }, [profileLoading, profile, role, previewId, router]);
 
   useEffect(() => {
     // A revoked member never triggers a fetch.
-    if (profileLoading || !isMember || isRevoked) return;
+    if (profileLoading || (!isMember && previewId === null) || isRevoked) {
+      return;
+    }
 
     let cancelled = false;
 
@@ -74,6 +102,19 @@ export default function KcptPlanPage() {
           }
           return;
         }
+        if (previewId) {
+          // Admin preview of another member's plan. `cancelled` guards against
+          // a stale response from a previous ?member= value.
+          const [previewPlan, members] = await Promise.all([
+            getMemberPlan(session.access_token, previewId),
+            getMembersList(session.access_token).catch(() => []),
+          ]);
+          if (cancelled) return;
+          const m = members.find((x) => x.id === previewId);
+          setPreviewLabel(m ? m.full_name.trim() || m.email || null : null);
+          setState({ kind: "ready", plan: previewPlan });
+          return;
+        }
         const plan = await getMemberPlan(session.access_token);
         if (!cancelled) setState({ kind: "ready", plan });
       } catch (err) {
@@ -87,7 +128,7 @@ export default function KcptPlanPage() {
     return () => {
       cancelled = true;
     };
-  }, [supabase, profileLoading, isMember, isRevoked, reloadKey]);
+  }, [supabase, profileLoading, isMember, isRevoked, previewId, reloadKey]);
 
   // Wait for role and status before rendering anything: no flash of the empty
   // state for admin/coach, no flash of plan content for a revoked member.
@@ -103,7 +144,7 @@ export default function KcptPlanPage() {
     );
   }
 
-  if (!isMember) return <PageLoader />;
+  if (!isMember && previewId === null) return <PageLoader />;
 
   const heading = (
     <h1 className="font-heading text-[34px] uppercase leading-none tracking-wide text-foreground">
@@ -113,6 +154,28 @@ export default function KcptPlanPage() {
 
   const shell =
     "flex flex-1 flex-col gap-4 px-5 py-6 md:mx-auto md:w-full md:max-w-3xl md:px-10 md:py-10";
+
+  // Shown only in admin preview. Null for members, so their page is unchanged.
+  const previewBanner = previewId ? (
+    <div
+      className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 rounded-lg border px-4 py-3"
+      style={{
+        background: "var(--tip-bg)",
+        borderColor: "var(--brand-orange-dark)",
+      }}
+      role="status"
+    >
+      <p className="text-[13.5px] font-semibold leading-snug text-foreground">
+        Preview of {previewLabel ?? "this member"} (read-only)
+      </p>
+      <Link
+        href={`/coach-review?member=${previewId}&tab=plan`}
+        className="text-[12px] font-bold text-brand-orange-dark underline decoration-dotted underline-offset-2"
+      >
+        Back to Coach Review
+      </Link>
+    </div>
+  ) : null;
 
   if (isRevoked) {
     return (
@@ -139,6 +202,7 @@ export default function KcptPlanPage() {
   if (state.kind === "error") {
     return (
       <div className={shell}>
+        {previewBanner}
         {heading}
         <div
           className="flex flex-col items-start gap-3 rounded-[20px] border border-border bg-card p-5"
@@ -164,6 +228,7 @@ export default function KcptPlanPage() {
   if (isPlanEmpty(plan)) {
     return (
       <div className={shell}>
+        {previewBanner}
         {heading}
         <section className="mt-2 flex flex-col items-center gap-4 rounded-[20px] border border-border bg-card px-6 py-9 text-center shadow-[0_12px_26px_-18px_rgba(17,17,17,0.16)]">
           <span className="flex h-14 w-14 items-center justify-center rounded-full bg-brand-gradient text-white">
@@ -176,14 +241,16 @@ export default function KcptPlanPage() {
             Please complete the KCPT questionnaire so I can create your
             individual plan.
           </p>
-          <a
-            href={KCPT_QUESTIONNAIRE_URL}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="mt-1.5 inline-flex items-center justify-center rounded-[14px] bg-brand-gradient px-[22px] py-[13px] font-heading text-[14px] uppercase tracking-wider text-white shadow-[0_10px_22px_-12px_rgba(236,74,49,0.6)] transition-transform hover:-translate-y-px"
-          >
-            Complete the KCPT questionnaire
-          </a>
+          {!previewId && (
+            <a
+              href={KCPT_QUESTIONNAIRE_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mt-1.5 inline-flex items-center justify-center rounded-[14px] bg-brand-gradient px-[22px] py-[13px] font-heading text-[14px] uppercase tracking-wider text-white shadow-[0_10px_22px_-12px_rgba(236,74,49,0.6)] transition-transform hover:-translate-y-px"
+            >
+              Complete the KCPT questionnaire
+            </a>
+          )}
         </section>
       </div>
     );
@@ -197,6 +264,7 @@ export default function KcptPlanPage() {
 
   return (
     <div className={shell}>
+      {previewBanner}
       {heading}
 
       {hasText(filled.name) && (
