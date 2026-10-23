@@ -55,7 +55,7 @@ export const PLAN_FIELDS: PlanFieldDef[] = [
   { key: "workouts", label: "Workouts", kind: "long" },
   { key: "barriers", label: "Barriers", kind: "long" },
   { key: "check_in", label: "Check-In", kind: "long" },
-  { key: "additional_guidance", label: "Additional Guidance", kind: "long" },
+  { key: "additional_guidance", label: "Your Focus", kind: "long" },
 ];
 
 export const PLAN_FIELD_KEYS: PlanFieldKey[] = PLAN_FIELDS.map((f) => f.key);
@@ -77,7 +77,7 @@ export const TEXT_SECTIONS: { key: PlanFieldKey; title: string }[] = [
   { key: "workouts", title: "Workouts" },
   { key: "barriers", title: "Barriers" },
   { key: "check_in", title: "Check-In" },
-  { key: "additional_guidance", title: "Additional Guidance" },
+  { key: "additional_guidance", title: "Your Focus" },
 ];
 
 /** Length in Unicode code points, the same way the server counts. */
