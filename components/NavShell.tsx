@@ -57,6 +57,13 @@ const kcptPlanItem: NavItem = {
   icon: <KcptHeartIcon className="h-[18px] w-[18px]" />,
 };
 
+// Admins: same position and icon, opens the Plan tab of Coach Review.
+const kcptPlanAdminItem: NavItem = {
+  label: "KCPT Plan",
+  href: "/coach-review?tab=plan",
+  icon: kcptPlanItem.icon,
+};
+
 const measurementsItem: NavItem = {
   label: "Measurements",
   href: "/measurements",
@@ -170,15 +177,21 @@ export default function NavShell({ children }: { children: ReactNode }) {
     return extras;
   }, [loading, profile?.role]);
 
-  // Admins and coaches have no personal plan. Wait for the profile so the item
-  // never flashes for them.
-  const showKcptPlan = !loading && profile?.role === "member";
+  // Members get "My KCPT Plan", admins get "KCPT Plan" (Coach Review plan tab),
+  // coaches get neither. Wait for the profile so the item never flashes.
+  const kcptNavItem = loading
+    ? null
+    : profile?.role === "member"
+      ? kcptPlanItem
+      : profile?.role === "admin"
+        ? kcptPlanAdminItem
+        : null;
   const primaryNavItems = useMemo(
     () =>
-      showKcptPlan
-        ? [baseNavItems[0], kcptPlanItem, ...baseNavItems.slice(1)]
+      kcptNavItem
+        ? [baseNavItems[0], kcptNavItem, ...baseNavItems.slice(1)]
         : baseNavItems,
-    [showKcptPlan],
+    [kcptNavItem],
   );
 
   const navItems = useMemo(
