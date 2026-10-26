@@ -22,6 +22,7 @@ import { useProfile } from "@/lib/context/ProfileContext";
 import { ensureNextWeekDraft } from "@/lib/ensureNextWeekDraft";
 import { useDebouncedSave } from "@/lib/hooks/useDebouncedSave";
 import { useWeekParam } from "@/lib/hooks/useWeekParam";
+import { SILVER_GOLD_CHECKIN_URL } from "@/lib/kcptPlan";
 import { createClient } from "@/lib/supabase/client";
 import { formatPillarCellValue, inferStepsMode, isUniformSteps } from "@/lib/trackerStats";
 import { getNextWeekStart, getWeekStart } from "@/lib/week";
@@ -1154,6 +1155,22 @@ function TrackerPageInner() {
             <p className="mt-2 text-xs text-brand-orange-dark">{nextWeekError}</p>
           )}
         </div>
+        )}
+
+        {/* External check-in form. Secondary (outline) so START NEXT WEEK'S
+            PLAN stays the primary action; never tied to the form's state.
+            Hidden when editing a past week and for revoked members. */}
+        {!isPastWeek && !isRevoked && (
+          <a
+            href={SILVER_GOLD_CHECKIN_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="mb-4 flex w-full items-center justify-center rounded-[14px] border-[1.5px] border-border bg-card px-5 py-3.5 transition-transform hover:-translate-y-0.5"
+          >
+            <span className="font-heading text-[13px] uppercase tracking-wide text-foreground">
+              Submit my Silver/Gold check-in
+            </span>
+          </a>
         )}
 
         <p className="mt-4 text-[12px] font-medium leading-snug text-muted">
