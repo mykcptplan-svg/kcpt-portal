@@ -14,6 +14,7 @@ import {
 import PillarEntrySheet, {
   type PillarEntryMetric,
 } from "@/components/tracker/PillarEntrySheet";
+import CoachingNotesCard from "@/components/tracker/CoachingNotesCard";
 import PillarInfoButton from "@/components/tracker/PillarInfoButton";
 import { getMemberFocus, saveMemberFocus } from "@/lib/api/memberFocus";
 import { discardNextWeekDraft } from "@/lib/api/nextWeekDraft";
@@ -658,6 +659,9 @@ function TrackerPageInner() {
           consistently lead to big results.
         </p>
       </section>
+
+      {/* Coach's shared notes: members only, renders nothing when there are none. */}
+      {profile?.role === "member" && !isRevoked && <CoachingNotesCard />}
 
       {/* Pillars grid */}
       <section className="rounded-[20px] border border-border bg-card px-4 pt-6 pb-5 shadow-[0_12px_26px_-18px_rgba(17,17,17,0.16)]">
