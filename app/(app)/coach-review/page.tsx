@@ -2,6 +2,7 @@
 
 import { Suspense, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import CoachingNotesEditor from "@/components/coach-review/CoachingNotesEditor";
 import FocusEditor from "@/components/coach-review/FocusEditor";
 import PlanEditor from "@/components/coach-review/PlanEditor";
 import HeartLoader from "@/components/HeartLoader";
@@ -120,7 +121,7 @@ function firstName(m: MemberListItem): string {
   return name.split(/\s+/)[0] ?? name;
 }
 
-type CoachReviewTab = "weeks" | "plan" | "focus";
+type CoachReviewTab = "weeks" | "plan" | "focus" | "notes";
 
 export default function CoachReviewPage() {
   return (
@@ -173,7 +174,8 @@ function CoachReviewPageInner() {
     members.find((m) => m.id === urlMemberId)?.id ?? members[0]?.id ?? null;
   const tabParam = searchParams.get("tab");
   const activeTab: CoachReviewTab =
-    isAdmin && (tabParam === "plan" || tabParam === "focus")
+    isAdmin &&
+    (tabParam === "plan" || tabParam === "focus" || tabParam === "notes")
       ? tabParam
       : "weeks";
 
@@ -623,6 +625,7 @@ function CoachReviewPageInner() {
                       ["weeks", "Weeks"],
                       ["plan", "KCPT Plan"],
                       ["focus", "Focus"],
+                      ["notes", "Coaching Notes"],
                     ] as const
                   ).map(([key, label]) => {
                     const selected = activeTab === key;
@@ -658,6 +661,15 @@ function CoachReviewPageInner() {
 
               {isAdmin && activeTab === "focus" && (
                 <FocusEditor
+                  key={active.id}
+                  memberId={active.id}
+                  memberName={displayName(active)}
+                  onDirtyChange={setEditorDirty}
+                />
+              )}
+
+              {isAdmin && activeTab === "notes" && (
+                <CoachingNotesEditor
                   key={active.id}
                   memberId={active.id}
                   memberName={displayName(active)}
