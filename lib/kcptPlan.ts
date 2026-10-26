@@ -9,6 +9,13 @@
  */
 export const KCPT_QUESTIONNAIRE_URL = "https://forms.gle/cHUfMEJqABJfAVo7A";
 
+/**
+ * "Submit my Silver/Gold check-in" button in the Success Tracker's Sunday
+ * Reset. Same external link for everyone; no parameters are added.
+ */
+export const SILVER_GOLD_CHECKIN_URL =
+  "https://hw2p2sr7hg0.typeform.com/to/DVCTkmER";
+
 export const SHORT_MAX = 200;
 export const LONG_MAX = 8000;
 /** The short-field character counter appears from this length. */
