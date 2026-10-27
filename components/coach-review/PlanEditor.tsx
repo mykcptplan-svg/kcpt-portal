@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import HeartLoader from "@/components/HeartLoader";
 import { LeaveDialog, SaveBar } from "@/components/coach-review/EditorChrome";
@@ -450,9 +451,17 @@ export default function PlanEditor({
   return (
     <div className={shell}>
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <p className="text-[11px] font-bold uppercase tracking-[0.08em] text-muted">
-          KCPT Plan
-        </p>
+        <div className="flex flex-wrap items-center gap-3">
+          <p className="text-[11px] font-bold uppercase tracking-[0.08em] text-muted">
+            KCPT Plan
+          </p>
+          <Link
+            href={`/kcpt-plan?member=${memberId}`}
+            className="text-[12px] font-bold text-brand-orange-dark underline decoration-dotted underline-offset-2"
+          >
+            Preview as member
+          </Link>
+        </div>
         <span
           className="rounded-full px-[11px] py-[5px] text-[12px] font-bold"
           style={{

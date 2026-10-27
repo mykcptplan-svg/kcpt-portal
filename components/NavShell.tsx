@@ -50,7 +50,7 @@ const baseNavItems: NavItem[] = [
   },
 ];
 
-// Members only; shown as the second item, directly after Home.
+// Members and admins (admins preview members there); second item, after Home.
 const kcptPlanItem: NavItem = {
   label: "My KCPT Plan",
   href: "/kcpt-plan",
@@ -170,15 +170,18 @@ export default function NavShell({ children }: { children: ReactNode }) {
     return extras;
   }, [loading, profile?.role]);
 
-  // Admins and coaches have no personal plan. Wait for the profile so the item
-  // never flashes for them.
-  const showKcptPlan = !loading && profile?.role === "member";
+  // Members and admins get "My KCPT Plan", coaches get none. Wait for the
+  // profile so the item never flashes.
+  const kcptNavItem =
+    !loading && (profile?.role === "member" || profile?.role === "admin")
+      ? kcptPlanItem
+      : null;
   const primaryNavItems = useMemo(
     () =>
-      showKcptPlan
-        ? [baseNavItems[0], kcptPlanItem, ...baseNavItems.slice(1)]
+      kcptNavItem
+        ? [baseNavItems[0], kcptNavItem, ...baseNavItems.slice(1)]
         : baseNavItems,
-    [showKcptPlan],
+    [kcptNavItem],
   );
 
   const navItems = useMemo(
