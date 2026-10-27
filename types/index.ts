@@ -75,6 +75,24 @@ export type MemberFocusResponse = {
   history: MemberFocus[];
 };
 
+/** Coaching note, admin shape (author_id is never returned). */
+export type CoachingNote = {
+  id: string;
+  user_id: string;
+  note: string;
+  /** false = private to the admin */
+  visible_to_member: boolean;
+  created_at: string;
+  /** Moves only when the note text is edited, not on visibility changes */
+  updated_at: string;
+};
+
+/** Coaching note as a member sees it: only their own visible notes. */
+export type MemberCoachingNote = Pick<
+  CoachingNote,
+  "id" | "note" | "created_at" | "updated_at"
+>;
+
 export type WeightMeasurement = {
   user_id: string;
   week_start: string;

@@ -14,6 +14,7 @@ import {
 import PillarEntrySheet, {
   type PillarEntryMetric,
 } from "@/components/tracker/PillarEntrySheet";
+import CoachingNotesCard from "@/components/tracker/CoachingNotesCard";
 import PillarInfoButton from "@/components/tracker/PillarInfoButton";
 import { getMemberFocus, saveMemberFocus } from "@/lib/api/memberFocus";
 import { discardNextWeekDraft } from "@/lib/api/nextWeekDraft";
@@ -22,6 +23,7 @@ import { useProfile } from "@/lib/context/ProfileContext";
 import { ensureNextWeekDraft } from "@/lib/ensureNextWeekDraft";
 import { useDebouncedSave } from "@/lib/hooks/useDebouncedSave";
 import { useWeekParam } from "@/lib/hooks/useWeekParam";
+import { SILVER_GOLD_CHECKIN_URL } from "@/lib/kcptPlan";
 import { createClient } from "@/lib/supabase/client";
 import { formatPillarCellValue, inferStepsMode, isUniformSteps } from "@/lib/trackerStats";
 import { getNextWeekStart, getWeekStart } from "@/lib/week";
@@ -659,6 +661,9 @@ function TrackerPageInner() {
         </p>
       </section>
 
+      {/* Coach's shared notes: members only, renders nothing when there are none. */}
+      {profile?.role === "member" && !isRevoked && <CoachingNotesCard />}
+
       {/* Pillars grid */}
       <section className="rounded-[20px] border border-border bg-card px-4 pt-6 pb-5 shadow-[0_12px_26px_-18px_rgba(17,17,17,0.16)]">
         <div className="mb-4 flex gap-3.5 rounded-[18px] border border-tip-border bg-tip-bg p-[18px]">
@@ -1156,11 +1161,33 @@ function TrackerPageInner() {
         </div>
         )}
 
-        <p className="mt-4 text-[12px] font-medium leading-snug text-muted">
+        <p className="text-[12px] font-medium leading-snug text-muted">
           Your progress is saved automatically. Every Monday your Success Tracker
           starts fresh for a new week. You can view all of your previous weeks at
           any time in your History.
         </p>
+
+        {/* External check-in form: the final action of Sunday Reset. A solid
+            orange button so it reads as the last step; hidden when editing a
+            past week and for revoked members; never tied to the form's state. */}
+        {!isPastWeek && !isRevoked && (
+          <div className="mt-4">
+            <p className="mb-2 text-[12px] font-bold text-center leading-snug text-muted">
+              Silver &amp; Gold members: Once you&apos;ve completed your Sunday
+              Reset, submit your check-in below.
+            </p>
+            <a
+              href={SILVER_GOLD_CHECKIN_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex w-full items-center justify-center rounded-[14px] bg-brand-orange px-5 py-3.5 transition-transform hover:-translate-y-0.5"
+            >
+              <span className="font-heading text-[13px] uppercase tracking-wide text-white">
+                Submit my Silver/Gold check-in
+              </span>
+            </a>
+          </div>
+        )}
       </section>
 
       {(loadError || saveError) && (
