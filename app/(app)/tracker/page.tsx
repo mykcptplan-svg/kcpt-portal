@@ -1172,7 +1172,7 @@ function TrackerPageInner() {
             past week and for revoked members; never tied to the form's state. */}
         {!isPastWeek && !isRevoked && (
           <div className="mt-4">
-            <p className="mb-2 text-[12px] font-medium leading-snug text-muted">
+            <p className="mb-2 text-[12px] font-bold text-center leading-snug text-muted">
               Silver &amp; Gold members: Once you&apos;ve completed your Sunday
               Reset, submit your check-in below.
             </p>
