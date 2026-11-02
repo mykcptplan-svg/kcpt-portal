@@ -15,6 +15,7 @@ import PillarEntrySheet, {
   type PillarEntryMetric,
 } from "@/components/tracker/PillarEntrySheet";
 import CoachingNotesCard from "@/components/tracker/CoachingNotesCard";
+import FocusInlineEditor from "@/components/tracker/FocusInlineEditor";
 import PillarInfoButton from "@/components/tracker/PillarInfoButton";
 import { getMemberFocus, saveMemberFocus } from "@/lib/api/memberFocus";
 import { discardNextWeekDraft } from "@/lib/api/nextWeekDraft";
@@ -26,7 +27,7 @@ import { useWeekParam } from "@/lib/hooks/useWeekParam";
 import { SILVER_GOLD_CHECKIN_URL } from "@/lib/kcptPlan";
 import { createClient } from "@/lib/supabase/client";
 import { formatPillarCellValue, inferStepsMode, isUniformSteps } from "@/lib/trackerStats";
-import { getNextWeekStart, getWeekStart } from "@/lib/week";
+import { formatWeekRange, getNextWeekStart, getWeekStart } from "@/lib/week";
 import type { DailyMetrics, Lifestyle } from "@/types";
 
 const DAY_LABELS = ["M", "T", "W", "T", "F", "S", "S"];
@@ -202,6 +203,19 @@ function TrackerPageInner() {
   // Items as first shown / last written; a PUT happens only when they differ.
   const focusBaselineRef = useRef<string[]>([]);
   const focusDirtyRef = useRef(false);
+  // True when the Sunday Reset field was prefilled from a member_focus row
+  // that is not dated next Monday (so it mirrors this week's focus).
+  const nextFocusDerivedRef = useRef(false);
+  // Effective week of the row shown in the Focus card; null for the habits
+  // fallback (nothing saved in member_focus).
+  const [focusEffectiveWeek, setFocusEffectiveWeek] = useState<string | null>(
+    null,
+  );
+  // Week whose focus is being edited inline (shown only while it is the
+  // displayed week), plus the save state of that editor.
+  const [editingFocusWeek, setEditingFocusWeek] = useState<string | null>(null);
+  const [focusSaving, setFocusSaving] = useState(false);
+  const [focusSaveError, setFocusSaveError] = useState<string | null>(null);
   const [dailyMetrics, setDailyMetrics] = useState<DailyMetrics>(emptyMetrics);
   const [lifestyle, setLifestyle] = useState<Lifestyle>(emptyLifestyle);
   const [wins, setWins] = useState<string[]>(["", "", ""]);
@@ -261,6 +275,7 @@ function TrackerPageInner() {
         const resolved = focusRes?.resolved ?? null;
         setFocusItems(resolved ? resolved.items : habits);
         setFocusSource(resolved ? resolved.source : null);
+        setFocusEffectiveWeek(resolved ? resolved.effective_week : null);
 
         // Sunday Reset focus: start from the focus resolved for NEXT week.
         const legacyRaw = tracker?.next_week_focus ?? [];
@@ -269,6 +284,7 @@ function TrackerPageInner() {
           .map((s) => s.trim())
           .filter((s) => s.length > 0);
         focusDirtyRef.current = false;
+        nextFocusDerivedRef.current = false;
         let mode: "legacy" | "edit" | "readonly" = "legacy";
         if (isCurrentWeek && nextFocusRes) {
           const nextResolved = nextFocusRes.resolved;
@@ -282,6 +298,7 @@ function TrackerPageInner() {
           const readOnly = fromTable && initial.length > 3;
           mode = readOnly ? "readonly" : "edit";
           focusBaselineRef.current = initial;
+          nextFocusDerivedRef.current = fromTable && !hasRowForNext && !readOnly;
           setNextFocusSource(fromTable && nextResolved ? nextResolved.source : null);
           setNextFocusReadOnlyItems(readOnly ? initial : []);
           setNextWeekFocus(
@@ -520,6 +537,61 @@ function TrackerPageInner() {
     });
   }
 
+  // Inline editor for THIS week's focus (current week, active members only,
+  // never for coach-set or more-than-3-point focus).
+  const canEditFocus =
+    profile?.role === "member" &&
+    !isRevoked &&
+    !isPastWeek &&
+    weekStart === getWeekStart() &&
+    focusSource !== "admin" &&
+    (focusEffectiveWeek === null || focusItems.length <= 3);
+  const editingFocus = canEditFocus && editingFocusWeek === weekStart;
+
+  async function handleSaveFocus(items: string[]) {
+    const current = focusEffectiveWeek === weekStart ? focusItems : null;
+    if (
+      current &&
+      current.length === items.length &&
+      current.every((s, i) => s === items[i])
+    ) {
+      setEditingFocusWeek(null);
+      return;
+    }
+    setFocusSaving(true);
+    setFocusSaveError(null);
+    try {
+      const accessToken = await getAccessToken();
+      if (!accessToken) throw new Error("Not logged in.");
+      const saved = await saveMemberFocus(accessToken, {
+        effective_week: weekStart,
+        items,
+      });
+      setFocusItems(saved.items);
+      setFocusSource(saved.source);
+      setFocusEffectiveWeek(saved.effective_week);
+      setEditingFocusWeek(null);
+      // Sunday Reset field mirrored the old carried-over focus and the member
+      // has not touched it: show the new focus, no extra member_focus write.
+      if (
+        nextFocusDerivedRef.current &&
+        focusModeRef.current === "edit" &&
+        !focusDirtyRef.current &&
+        focusBaselineRef.current.length > 0
+      ) {
+        focusBaselineRef.current = saved.items;
+        setNextWeekFocus([0, 1, 2].map((i) => saved.items[i] ?? ""));
+        setNextFocusSource(saved.source);
+      }
+    } catch (err) {
+      setFocusSaveError(
+        err instanceof Error ? err.message : "Unable to save your focus.",
+      );
+    } finally {
+      setFocusSaving(false);
+    }
+  }
+
   const draft = useMemo(
     () => ({ focusItems, dailyMetrics, lifestyle, wins, nextWeekFocus }),
     [focusItems, dailyMetrics, lifestyle, wins, nextWeekFocus],
@@ -627,7 +699,18 @@ function TrackerPageInner() {
             My Focus This Week
           </h2>
         </div>
-        {focusItems.length > 0 ? (
+        {editingFocus ? (
+          <FocusInlineEditor
+            initialItems={focusEffectiveWeek === null ? [] : focusItems}
+            saving={focusSaving}
+            error={focusSaveError}
+            onSave={(items) => void handleSaveFocus(items)}
+            onCancel={() => {
+              setFocusSaveError(null);
+              setEditingFocusWeek(null);
+            }}
+          />
+        ) : focusItems.length > 0 ? (
           <ol className="flex flex-col gap-2.5">
             {focusItems.map((item, i) => (
               <li
@@ -644,9 +727,32 @@ function TrackerPageInner() {
         ) : (
           /* REVIEW COPY: empty state of the Focus card */
           <p className="text-[13px] font-medium leading-snug text-muted">
-            No focus set yet. You can choose your focus for next week in the
-            Sunday Reset below.
+            {canEditFocus
+              ? /* REVIEW COPY: empty state when the member can set it here */
+                "No focus set yet. Set it for this week here, or choose next week's in the Sunday Reset below."
+              : "No focus set yet. You can choose your focus for next week in the Sunday Reset below."}
           </p>
+        )}
+        {!editingFocus &&
+          focusEffectiveWeek !== null &&
+          focusEffectiveWeek < weekStart && (
+            /* REVIEW COPY: the shown focus was set for an earlier week */
+            <p className="mt-2 text-[12px] font-medium text-muted">
+              Carried over from the week of {formatWeekRange(focusEffectiveWeek)}
+            </p>
+          )}
+        {canEditFocus && !editingFocus && (
+          <button
+            type="button"
+            onClick={() => {
+              setFocusSaveError(null);
+              setEditingFocusWeek(weekStart);
+            }}
+            className="mt-3 cursor-pointer rounded-[10px] border border-border px-3.5 py-2 text-xs font-bold text-foreground transition-colors hover:bg-tip-bg"
+          >
+            {/* REVIEW COPY: button labels */}
+            {focusEffectiveWeek === null ? "Set this week's focus" : "Edit"}
+          </button>
         )}
         {focusItems.length > 0 && focusSource === "admin" && (
           /* REVIEW COPY: attribution when the coach wrote the focus */
